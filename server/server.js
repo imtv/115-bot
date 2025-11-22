@@ -15,7 +15,7 @@ const JWT_SECRET = 'your_super_secret_key_115_master';
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// 1. 路径配置：使用 resolve 确保路径准确
+// 1. 路径配置
 const DATA_ROOT = path.resolve(__dirname, '../data');
 const USERS_FILE = path.join(DATA_ROOT, 'users.json');
 
@@ -34,6 +34,12 @@ if (!fs.existsSync(DATA_ROOT)) {
 // 缓存变量
 let tasksCache = {};
 let cronJobs = {};
+let usersCache = []; // 用于存储用户信息和 cookie
+
+// 辅助函数：获取今天的日期字符串 (YYYY-MM-DD)
+function getTodayDateStr() { 
+    return new Date().toISOString().split('T')[0]; 
+}
 
 // 获取用户目录（如果不存在则创建）
 const getUserDir = (uid) => {
@@ -53,24 +59,39 @@ const getUserDir = (uid) => {
 function initSystem() {
     if (fs.existsSync(USERS_FILE)) {
         try {
-            const users = JSON.parse(fs.readFileSync(USERS_FILE));
-            console.log(`[System] 发现 ${users.length} 个注册用户`);
+            usersCache = JSON.parse(fs.readFileSync(USERS_FILE));
+            console.log(`[System] 发现 ${usersCache.length} 个注册用户`);
             
-            users.forEach(u => {
+            usersCache.forEach(u => {
                 const taskFile = path.join(getUserDir(u.id), 'tasks.json');
+                const configFile = path.join(getUserDir(u.id), 'config.json');
+
+                // 尝试加载 Cookie (用于 processTask)
+                if (fs.existsSync(configFile)) {
+                    u.cookie = JSON.parse(fs.readFileSync(configFile)).cookie;
+                } else {
+                    u.cookie = null;
+                }
+
                 if (fs.existsSync(taskFile)) {
                     const tasks = JSON.parse(fs.readFileSync(taskFile));
-                    tasksCache[u.id] = tasks;
+                    // 确保任务结构包含新的监控字段
+                    tasksCache[u.id] = tasks.map(t => ({
+                        ...t,
+                        lastShareHash: t.lastShareHash || null,
+                        lastSuccessDate: t.lastSuccessDate || null,
+                    }));
                     
                     let count = 0;
-                    tasks.forEach(t => {
-                        // 恢复状态不是 stopped 且有 cron 表达式的任务
+                    tasksCache[u.id].forEach(t => {
                         if (t.cronExpression && t.status !== 'stopped') {
                             startCronJob(u.id, t);
                             count++;
                         }
                     });
                     if(count > 0) console.log(` - 用户 [${u.username}] 恢复了 ${count} 个定时任务`);
+                } else {
+                    tasksCache[u.id] = [];
                 }
             });
         } catch (e) {
@@ -88,6 +109,17 @@ const authenticate = (req, res, next) => {
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) return res.status(403).json({ success: false, msg: "Token 无效" });
         req.user = user;
+        
+        // 更新 usersCache 中的 cookie (确保最新)
+        const configFile = path.join(getUserDir(user.id), 'config.json');
+        if (fs.existsSync(configFile)) {
+            const config = JSON.parse(fs.readFileSync(configFile));
+            const cachedUser = usersCache.find(u => u.id === user.id);
+            if (cachedUser) {
+                cachedUser.cookie = config.cookie;
+            }
+        }
+        
         next();
     });
 };
@@ -96,6 +128,7 @@ const authenticate = (req, res, next) => {
 
 app.post('/api/register', (req, res) => {
     const { username, password } = req.body;
+    // ... (注册逻辑不变) ...
     if (!username || !password) return res.status(400).json({ success: false, msg: "缺少参数" });
     
     let users = fs.existsSync(USERS_FILE) ? JSON.parse(fs.readFileSync(USERS_FILE)) : [];
@@ -105,8 +138,9 @@ app.post('/api/register', (req, res) => {
     
     const newUser = { id: Date.now(), username, password };
     users.push(newUser);
+    usersCache.push(newUser);
     fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-    getUserDir(newUser.id); // 初始化目录
+    getUserDir(newUser.id); 
     
     res.json({ success: true, msg: "注册成功" });
 });
@@ -117,9 +151,7 @@ app.post('/api/login', (req, res) => {
     const user = users.find(u => u.username === username && u.password === password);
     
     if (user) {
-        // 登录成功时，确保该用户的目录存在 (修复数据丢失的错觉)
         getUserDir(user.id);
-        
         const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
         res.json({ success: true, token, username: user.username });
     } else {
@@ -144,6 +176,13 @@ app.post('/api/config', authenticate, async (req, res) => {
         const info = await service115.getUserInfo(cookie);
         const configFile = path.join(getUserDir(req.user.id), 'config.json');
         fs.writeFileSync(configFile, JSON.stringify({ cookie, name: info.name }, null, 2));
+        
+        // 更新内存缓存中的 cookie
+        const cachedUser = usersCache.find(u => u.id === req.user.id);
+        if (cachedUser) {
+            cachedUser.cookie = cookie;
+        }
+
         res.json({ success: true, name: info.name });
     } catch (e) {
         res.status(400).json({ success: false, msg: e.message });
@@ -151,12 +190,11 @@ app.post('/api/config', authenticate, async (req, res) => {
 });
 
 app.get('/api/folders', authenticate, async (req, res) => {
-    const configFile = path.join(getUserDir(req.user.id), 'config.json');
-    if (!fs.existsSync(configFile)) return res.status(400).json({ success: false, msg: "请先配置 Cookie" });
-    const { cookie } = JSON.parse(fs.readFileSync(configFile));
+    const cachedUser = usersCache.find(u => u.id === req.user.id);
+    if (!cachedUser || !cachedUser.cookie) return res.status(400).json({ success: false, msg: "请先配置 Cookie" });
     
     try {
-        const data = await service115.getFolderList(cookie, req.query.cid || "0");
+        const data = await service115.getFolderList(cachedUser.cookie, req.query.cid || "0");
         res.json({ success: true, data });
     } catch (e) {
         res.status(500).json({ success: false, msg: "获取目录失败: " + e.message });
@@ -166,54 +204,46 @@ app.get('/api/folders', authenticate, async (req, res) => {
 // --- Task API ---
 
 app.get('/api/tasks', authenticate, (req, res) => {
-    if (!tasksCache[req.user.id]) {
-        const taskFile = path.join(getUserDir(req.user.id), 'tasks.json');
-        if (fs.existsSync(taskFile)) {
-            tasksCache[req.user.id] = JSON.parse(fs.readFileSync(taskFile));
-        } else {
-            tasksCache[req.user.id] = [];
-        }
-    }
-    res.json(tasksCache[req.user.id]);
+    // 确保任务结构包含新的监控字段
+    const tasks = (tasksCache[req.user.id] || []).map(t => ({
+        ...t,
+        lastShareHash: t.lastShareHash || null,
+        lastSuccessDate: t.lastSuccessDate || null,
+    }));
+    tasksCache[req.user.id] = tasks;
+    res.json(tasks);
 });
 
 app.post('/api/task', authenticate, async (req, res) => {
-    // cronExpression 现在直接接收字符串，例如 "* * * * *" 或 ""
     const { taskName, shareUrl, password, targetCid, targetName, cronExpression } = req.body;
     const userId = req.user.id;
 
-    const configFile = path.join(getUserDir(userId), 'config.json');
-    if (!fs.existsSync(configFile)) return res.status(400).json({ success: false, msg: "未配置 Cookie" });
-    const { cookie } = JSON.parse(fs.readFileSync(configFile));
+    const cachedUser = usersCache.find(u => u.id === userId);
+    if (!cachedUser || !cachedUser.cookie) return res.status(400).json({ success: false, msg: "未配置 Cookie" });
+    const cookie = cachedUser.cookie;
 
     try {
         const urlInfo = extractShareCode(shareUrl);
         const pass = password || urlInfo.password;
 
-        // --- 核心新功能：自动归档逻辑 ---
-        // 1. 先获取分享链接的信息 (主要是标题)
-        const shareData = await service115.getShareSnap(cookie, urlInfo.code, pass);
-        
-        // 2. 决定最终的任务名和目标目录
+        // 1. 获取分享信息，包括文件ID列表（已排序）和标题
+        const shareInfo = await service115.getShareInfo(cookie, urlInfo.code, pass);
+
+        // 2. 决定最终的任务名和目标目录 (自动归档逻辑)
         let finalTaskName = taskName;
         let finalTargetCid = targetCid || "0";
         let finalTargetName = targetName || "根目录";
 
-        // 如果用户没有填任务名，我们认为是"自动模式"
         if (!finalTaskName || finalTaskName.trim() === "") {
-            finalTaskName = shareData.shareTitle; // 使用分享的标题作为任务名
-            console.log(`[AutoFolder] 自动命名任务: ${finalTaskName}`);
-            
-            // 尝试在目标目录下创建同名文件夹
+            finalTaskName = shareInfo.shareTitle; 
             try {
                 const newFolder = await service115.addFolder(cookie, finalTargetCid, finalTaskName);
                 if (newFolder.success) {
                     finalTargetCid = newFolder.cid;
                     finalTargetName = `${finalTargetName} > ${newFolder.name}`;
-                    console.log(`[AutoFolder] 自动创建并切换目录至: ${finalTargetName}`);
                 }
             } catch (err) {
-                console.warn(`[AutoFolder] 创建文件夹失败 (${err.message})，将存入原目录`);
+                console.warn(`[AutoFolder] 创建文件夹失败 (${err.message})`);
             }
         }
 
@@ -221,17 +251,19 @@ app.post('/api/task', authenticate, async (req, res) => {
         const newTask = {
             id: Date.now(),
             taskName: finalTaskName,
-            shareUrl: shareUrl, // 保存原始 URL 用于前端跳转
+            shareUrl: shareUrl,
             shareCode: urlInfo.code,
             receiveCode: pass,
             targetCid: finalTargetCid,
             targetName: finalTargetName,
-            cronExpression: cronExpression, // 只有当字符串不为空时才会被 Cron 执行
+            cronExpression: cronExpression,
             status: 'pending',
             log: '任务已初始化',
+            // 【新增监控字段】
+            lastShareHash: shareInfo.fileIds.join(','), // 首次运行时计算哈希
+            lastSuccessDate: null, 
             historyCount: 0,
             createTime: Date.now(),
-            lastSuccessDate: null
         };
 
         // 4. 保存并执行
@@ -239,13 +271,12 @@ app.post('/api/task', authenticate, async (req, res) => {
         tasksCache[userId].unshift(newTask);
         saveUserTasks(userId);
 
-        // 立即执行一次 (无论是单次任务还是定时任务，刚创建都应该跑一次)
-        processTask(userId, newTask, false, true);
+        processTask(userId, newTask, false);
 
         // 如果有 cron 表达式，加入调度器
         if (cronExpression && cronExpression.trim().length > 0) {
-            newTask.status = 'scheduled';
             startCronJob(userId, newTask);
+            newTask.status = 'scheduled';
             saveUserTasks(userId);
         }
 
@@ -262,47 +293,42 @@ app.put('/api/task/:id', authenticate, async (req, res) => {
     const taskId = parseInt(req.params.id);
     const { taskName, shareUrl, password, targetCid, targetName, cronExpression } = req.body;
     
-    // 1. 查找任务
     const userTasks = tasksCache[userId] || [];
     const task = userTasks.find(t => t.id === taskId);
     if (!task) return res.status(404).json({ success: false, msg: "任务不存在" });
     
-    // 2. 停止旧的定时器（如果有）
     if (cronJobs[taskId]) {
         cronJobs[taskId].stop();
         delete cronJobs[taskId];
     }
 
     try {
-        // 3. 更新字段
+        // 更新字段
         if (taskName) task.taskName = taskName;
         if (targetCid) task.targetCid = targetCid;
         if (targetName) task.targetName = targetName;
         
-        // 如果更新了链接，重新解析
+        // 如果更新了链接，重新解析 shareCode/receiveCode
         if (shareUrl && shareUrl !== task.shareUrl) {
             const urlInfo = extractShareCode(shareUrl);
             task.shareUrl = shareUrl;
             task.shareCode = urlInfo.code;
-            // 如果 URL 里自带密码，优先用 URL 的；如果用户填了新密码，用填的
-            task.receiveCode = password || urlInfo.password || task.receiveCode;
+            task.receiveCode = password || urlInfo.password;
+            task.lastShareHash = null; // 链接变了，重置哈希
         } else if (password) {
-            // 只更新了密码
-            task.receiveCode = password;
+            task.receiveCode = password; // 只更新了密码
+        } else if (shareUrl) {
+            task.shareUrl = shareUrl; // 确保 URL 也是最新的 (即使内容不变)
         }
 
-        // 4. 更新定时策略
-        task.cronExpression = cronExpression; // 更新表达式
+        // 更新定时策略
+        task.cronExpression = cronExpression;
 
-        // 5. 如果有新的有效 Cron，重新启动定时器
+        // 如果有新的有效 Cron，重新启动定时器
         if (cronExpression && cronExpression.trim() !== "" && cron.validate(cronExpression)) {
             task.status = 'scheduled';
-            console.log(`[Cron] 更新并重启任务 ${task.id}: ${cronExpression}`);
-            cronJobs[task.id] = cron.schedule(cronExpression, () => {
-                processTask(userId, task, true);
-            });
+            startCronJob(userId, task);
         } else {
-            // 如果清空了 Cron，状态改为 pending
             task.status = 'pending';
             task.log = '定时已关闭，等待手动执行';
         }
@@ -311,7 +337,6 @@ app.put('/api/task/:id', authenticate, async (req, res) => {
         res.json({ success: true, msg: "任务已更新" });
 
     } catch (e) {
-        console.error(e);
         res.status(400).json({ success: false, msg: "更新失败: " + e.message });
     }
 });
@@ -320,13 +345,11 @@ app.delete('/api/task/:id', authenticate, (req, res) => {
     const userId = req.user.id;
     const taskId = parseInt(req.params.id);
     
-    // 停止定时器
     if (cronJobs[taskId]) {
         cronJobs[taskId].stop();
         delete cronJobs[taskId];
     }
     
-    // 删除数据
     if (tasksCache[userId]) {
         tasksCache[userId] = tasksCache[userId].filter(t => t.id !== taskId);
         saveUserTasks(userId);
@@ -343,80 +366,78 @@ function startCronJob(userId, task) {
     }
 
     if (!task.cronExpression || !cron.validate(task.cronExpression)) {
-        console.log(`[Cron] 任务 ${task.id} 无效的表达式: ${task.cronExpression}`);
         return;
     }
 
-    console.log(`[Cron] 启动任务 ${task.taskName}: ${task.cronExpression}`);
+    console.log(`[Cron] 启动/重启任务 ${task.taskName}: ${task.cronExpression}`);
     
     cronJobs[task.id] = cron.schedule(task.cronExpression, () => {
         processTask(userId, task, true);
     });
 }
 
-async function processTask(userId, task, isCron = false, force = false) {
-    const configFile = path.join(getUserDir(userId), 'config.json');
-    if (!fs.existsSync(configFile)) return; // 没配置 cookie 就不跑了
-    const { cookie } = JSON.parse(fs.readFileSync(configFile));
-
-    // Cron 模式下：如果今天已经成功过，跳过 (每日去重)
-    // 如果你希望某些任务一天跑多次，可以把这段逻辑注释掉，或者仅针对特定 Cron 做限制
-    if (isCron && task.lastSuccessDate) {
-        const today = new Date().toISOString().split('T')[0];
-        // 只有当 cron 包含 "日" 级别的设定时，才执行每日一次检查
-        // 这里简化逻辑：所有 Cron 任务每天只记录一次成功日期，但这会阻止一天多次运行
-        // 修改策略：这里暂时移除“一天一次”的硬性限制，依靠下面的“文件列表去重”来决定是否执行
+// 【核心监控逻辑】
+async function processTask(userId, task, isCron = false) {
+    const cachedUser = usersCache.find(u => u.id === userId);
+    if (!cachedUser || !cachedUser.cookie) {
+        updateTaskStatus(userId, task, isCron ? 'scheduled' : 'error', `[${formatTime()}] Cookie配置缺失或失效`);
+        return;
     }
+    const cookie = cachedUser.cookie;
+    const todayStr = getTodayDateStr();
 
-    if (!isCron) updateTaskStatus(userId, task, 'running', '正在解析链接...');
-
+    // --- 1. 每日成功锁定检查 ---
+    if (isCron && task.status === 'scheduled' && task.lastSuccessDate === todayStr) {
+        console.log(`[Cron Skip] 任务 ${task.id} (${task.taskName}) 今日已成功执行，跳过`);
+        updateTaskStatus(userId, task, 'scheduled', `[${formatTime()}] 今日已成功转存，跳过本次执行`);
+        return; 
+    }
+    
+    updateTaskStatus(userId, task, 'running', `[${formatTime()}] 正在检查更新...`);
+    
+    // --- 2. 检查分享内容更新 (通过哈希文件列表) ---
     try {
-        // 1. 获取分享文件列表
-        const snap = await service115.getShareSnap(cookie, task.shareCode, task.receiveCode);
-        const fileIds = snap.list;
-
+        // 使用 service115.getShareInfo 获取已排序的文件ID列表
+        const shareInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode);
+        const fileIds = shareInfo.fileIds;
+        
         if (!fileIds || fileIds.length === 0) {
-            throw new Error("分享链接中没有文件");
+            const finalStatus = isCron ? 'scheduled' : 'failed';
+            updateTaskStatus(userId, task, finalStatus, `[${formatTime()}] 分享链接内无文件`);
+            return; 
         }
 
-        // 2. 去重逻辑 (Cron 模式且非强制执行时)
-        let filesToSave = fileIds;
-        if (isCron && !force) {
-            const historyFile = path.join(getUserDir(userId), 'history.json');
-            const history = fs.existsSync(historyFile) ? new Set(JSON.parse(fs.readFileSync(historyFile))) : new Set();
-            
-            filesToSave = fileIds.filter(fid => !history.has(fid));
-            
-            if (filesToSave.length === 0) {
-                updateTaskStatus(userId, task, 'scheduled', `[${formatTime()}] 监控正常: 无新文件`);
-                return;
-            }
+        const currentShareHash = fileIds.join(',');
+
+        if (task.lastShareHash && task.lastShareHash === currentShareHash) {
+            // 【无更新跳过】内容没有变化，跳过转存
+            console.log(`[Skip] 任务 ${task.id} (${task.taskName}) 内容无更新，跳过转存`);
+            const finalStatus = isCron ? 'scheduled' : 'pending';
+            updateTaskStatus(userId, task, finalStatus, `[${formatTime()}] 内容无更新，跳过转存`);
+            return; 
         }
 
-        // 3. 执行转存
-        if (!isCron) updateTaskStatus(userId, task, 'running', `正在转存 ${filesToSave.length} 个文件...`);
-        const result = await service115.saveFiles(cookie, task.targetCid, task.shareCode, task.receiveCode, filesToSave);
+        // 内容已更新或首次运行，记录新哈希值
+        task.lastShareHash = currentShareHash; 
+        
+        // --- 3. 执行转存 ---
 
-        if (result.success) {
-            // 4. 记录历史
-            const historyFile = path.join(getUserDir(userId), 'history.json');
-            const history = fs.existsSync(historyFile) ? new Set(JSON.parse(fs.readFileSync(historyFile))) : new Set();
-            filesToSave.forEach(fid => history.add(fid));
-            fs.writeFileSync(historyFile, JSON.stringify([...history]));
+        const saveResult = await service115.saveFiles(cookie, task.targetCid, task.shareCode, task.receiveCode, fileIds);
 
-            task.historyCount = (task.historyCount || 0) + filesToSave.length;
-            if (isCron) task.lastSuccessDate = new Date().toISOString().split('T')[0];
-
-            const status = isCron ? 'scheduled' : 'success';
-            updateTaskStatus(userId, task, status, `[${formatTime()}] 成功转存 ${filesToSave.length} 个文件`);
+        // --- 4. 成功后更新状态和日期 ---
+        if (saveResult.success) {
+            const finalStatus = isCron ? 'scheduled' : 'success';
+            // 【新增】成功后记录日期
+            task.lastSuccessDate = todayStr;
+            updateTaskStatus(userId, task, finalStatus, `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`);
         } else {
-            const status = isCron ? 'scheduled' : 'failed'; // Cron 失败不标红，继续等待下次
-            updateTaskStatus(userId, task, status, `转存失败: ${result.msg}`);
+            const finalStatus = isCron ? 'scheduled' : 'failed'; 
+            updateTaskStatus(userId, task, finalStatus, `转存失败: ${saveResult.msg}`);
         }
 
     } catch (e) {
-        const status = isCron ? 'scheduled' : 'error';
-        updateTaskStatus(userId, task, status, `错误: ${e.message}`);
+        const finalStatus = isCron ? 'scheduled' : 'error';
+        updateTaskStatus(userId, task, finalStatus, `错误: ${e.message}`);
     }
 }
 
@@ -429,7 +450,8 @@ function updateTaskStatus(userId, task, status, log) {
         if (t) {
             t.status = status;
             t.log = log;
-            t.historyCount = task.historyCount;
+            t.lastShareHash = task.lastShareHash;
+            t.lastSuccessDate = task.lastSuccessDate;
         }
     }
     saveUserTasks(userId);
@@ -446,8 +468,7 @@ function saveUserTasks(userId) {
 
 function extractShareCode(url) {
     if (!url) throw new Error("链接不能为空");
-    // 支持 https://115.com/s/sw33a... 和包含 ?password= 的格式
-    const codeMatch = url.match(/\/s\/([a-z0-9]+)/);
+    const codeMatch = url.match(/\/s\/([a-z0-9]+)/i);
     if (!codeMatch) throw new Error("无法识别链接格式");
     
     const pwdMatch = url.match(/[?&]password=([^&#]+)/);
