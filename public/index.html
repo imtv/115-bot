@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>115 auto-save bot </title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #3b82f6; --bg: #f3f4f6; --card: #fff; --text: #1f2937; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; flex-direction: column; }
+        
+        /* Auth Screen */
+        #authScreen { position: fixed; inset: 0; background: #fff; z-index: 100; display: flex; align-items: center; justify-content: center; }
+        .auth-box { width: 320px; padding: 40px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
+        .auth-box h2 { margin-top: 0; color: var(--primary); }
+        
+        /* Main App */
+        .app-container { max-width: 800px; margin: 40px auto; width: 90%; flex: 1; display: none; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        /* Forms */
+        input, select, button { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #e5e7eb; border-radius: 6px; box-sizing: border-box; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        .btn-outline { background: transparent; color: var(--text); border: 1px solid #e5e7eb; }
+        .btn-danger { background: #ef4444; color: white; border: none; }
+        .btn-edit { background: #3b82f6; color: white; border: none; }
+        
+        /* Task List */
+        .task-item { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #ccc; }
+        .task-item.running { border-left-color: #3b82f6; }
+        .task-item.success { border-left-color: #10b981; }
+        .task-item.error { border-left-color: #ef4444; }
+        .task-item.scheduled { border-left-color: #8b5cf6; }
+
+        .task-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .task-link { font-size: 1.05rem; font-weight: 600; color: var(--primary); text-decoration: none; display: inline-block; margin-bottom: 4px; }
+        .task-link:hover { text-decoration: underline; }
+        .task-meta { font-size: 0.85rem; color: #6b7280; display: flex; gap: 10px; margin-bottom: 6px; }
+        .task-log { font-size: 0.8rem; color: #4b5563; background: #e5e7eb; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;}
+
+        /* Cron Builder */
+        .cron-builder { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+        .cron-field { flex: 1; text-align: center; }
+        .cron-field label { font-size: 0.7rem; color: #666; display: block; margin-bottom: 4px; font-weight: 500; }
+        .cron-field input { text-align: center; padding: 8px 2px; font-family: monospace; margin-bottom: 0; }
+        .cron-preview { font-family: monospace; background: #1f2937; color: #10b981; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.85rem; }
+
+        /* Modal */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 200; }
+        .modal-content { background: white; padding: 20px; border-radius: 12px; width: 450px; max-height: 80vh; display: flex; flex-direction: column; overflow-y: auto; }
+        
+        .row { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="authScreen">
+        <div class="auth-box">
+            <h2>115 Task Master</h2>
+            <input type="text" id="username" placeholder="用户名">
+            <input type="password" id="password" placeholder="密码">
+            <button onclick="doLogin()">登录</button>
+            <button onclick="doRegister()" class="btn-outline" style="margin-top: 10px;">注册新账号</button>
+        </div>
+    </div>
+
+    <div class="app-container" id="app">
+        <div class="header">
+            <h3>👋 你好, <span id="currentUser">用户</span></h3>
+            <button onclick="logout()" class="btn-outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">🚪 退出登录</button>
+        </div>
+
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong>📂 115 账号状态</strong>
+                <span id="accountStatus" style="font-size:0.9rem; color:gray">未连接</span>
+            </div>
+            <div style="margin-top: 15px; display: flex; gap: 10px;">
+                <input type="text" id="cookieInput" placeholder="输入 Cookie (UID/CID/SEID...)" style="margin:0;">
+                <button onclick="saveConfig()" style="width: 100px; margin:0;">保存</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>➕ 新建智能任务</h3>
+            <div style="font-size:0.85rem; color:#666; margin-bottom:12px; background:#f3f4f6; padding:8px; border-radius:6px;">
+                💡 <b>自动归档</b>：留空任务名称，系统将自动获取分享标题，并在目标目录下<b>自动新建同名文件夹</b>。
+            </div>
+            
+            <div class="row">
+                <input type="text" id="taskName" placeholder="任务名称 (留空则自动命名+建文件夹)">
+            </div>
+            
+            <input type="text" id="shareUrl" placeholder="分享链接 (https://115.com/s/...)">
+            
+            <div class="row">
+                <input type="text" id="accessCode" placeholder="提取码 (可选)">
+                <div style="display:flex; gap:5px; width: 100%;">
+                    <input type="text" id="targetPath" value="根目录" readonly style="background:#eee;">
+                    <input type="hidden" id="targetCid" value="0">
+                    <button onclick="openFolderPicker(false)" class="btn-outline" style="width:70px;">选择目录</button>
+                </div>
+            </div>
+
+            <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
+                <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
+                    <span>⏱️ 定时计划 (Cron)</span>
+                    <span style="font-weight:400; font-size:0.8rem; color:#0284c7; cursor:pointer;" onclick="clearCron('create')">[ 重置/仅一次 ]</span>
+                </label>
+                <div style="margin-top: 10px;">
+                    <div class="cron-builder">
+                        <div class="cron-field"><label>分</label><input type="text" id="cron_m" placeholder="*" oninput="updateCronPreview('create')"></div>
+                        <div class="cron-field"><label>时</label><input type="text" id="cron_h" placeholder="*" oninput="updateCronPreview('create')"></div>
+                        <div class="cron-field"><label>日</label><input type="text" id="cron_dom" placeholder="*" oninput="updateCronPreview('create')"></div>
+                        <div class="cron-field"><label>月</label><input type="text" id="cron_mon" placeholder="*" oninput="updateCronPreview('create')"></div>
+                        <div class="cron-field"><label>周</label><input type="text" id="cron_dow" placeholder="*" oninput="updateCronPreview('create')"></div>
+                    </div>
+                    <div class="cron-preview" id="cronResult">执行策略: 仅一次 (立即执行)</div>
+                </div>
+            </div>
+
+            <button onclick="createTask()">🚀 开始任务</button>
+        </div>
+
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0;">📋 任务队列</h3>
+                <button onclick="loadTasks()" class="btn-outline" style="width:auto; padding:5px 12px;">刷新</button>
+            </div>
+            <div id="taskList"></div>
+        </div>
+    </div>
+
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <strong>✏️ 编辑任务</strong>
+                <span onclick="document.getElementById('editModal').style.display='none'" style="cursor:pointer; font-size:1.5rem;">&times;</span>
+            </div>
+            
+            <input type="hidden" id="editTaskId">
+            
+            <label style="font-size:0.8rem; color:#666;">任务名称</label>
+            <input type="text" id="editTaskName" placeholder="任务名称">
+            
+            <label style="font-size:0.8rem; color:#666;">分享链接</label>
+            <input type="text" id="editShareUrl" placeholder="分享链接">
+            
+            <label style="font-size:0.8rem; color:#666;">提取码</label>
+            <input type="text" id="editAccessCode" placeholder="提取码 (可选)">
+            
+            <label style="font-size:0.8rem; color:#666;">保存位置</label>
+            <div class="row" style="margin-bottom:10px;">
+                <div style="display:flex; gap:5px; width: 100%;">
+                    <input type="text" id="editTargetPath" readonly style="background:#eee; margin-bottom:0;">
+                    <input type="hidden" id="editTargetCid">
+                    <button onclick="openFolderPicker(true)" class="btn-outline" style="width:70px; margin-bottom:0;">修改</button>
+                </div>
+            </div>
+
+            <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
+                <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
+                    <span>⏱️ 定时计划 (Cron)</span>
+                    <span style="font-weight:400; font-size:0.8rem; color:#0284c7; cursor:pointer;" onclick="clearCron('edit')">[ 重置 ]</span>
+                </label>
+                <div style="margin-top: 10px;">
+                    <div class="cron-builder">
+                        <div class="cron-field"><label>分</label><input type="text" id="edit_cron_m" placeholder="*" oninput="updateCronPreview('edit')"></div>
+                        <div class="cron-field"><label>时</label><input type="text" id="edit_cron_h" placeholder="*" oninput="updateCronPreview('edit')"></div>
+                        <div class="cron-field"><label>日</label><input type="text" id="edit_cron_dom" placeholder="*" oninput="updateCronPreview('edit')"></div>
+                        <div class="cron-field"><label>月</label><input type="text" id="edit_cron_mon" placeholder="*" oninput="updateCronPreview('edit')"></div>
+                        <div class="cron-field"><label>周</label><input type="text" id="edit_cron_dow" placeholder="*" oninput="updateCronPreview('edit')"></div>
+                    </div>
+                    <div class="cron-preview" id="editCronResult">执行策略: 未变更</div>
+                </div>
+            </div>
+
+            <button onclick="updateTask()">保存修改</button>
+        </div>
+    </div>
+
+    <div id="folderModal" class="modal">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <strong>选择保存位置</strong>
+                <span onclick="document.getElementById('folderModal').style.display='none'" style="cursor:pointer; font-size:1.5rem;">&times;</span>
+            </div>
+            <div id="folderBreadcrumb" style="font-size:0.85rem; color:#2563eb; margin-bottom:10px; font-weight:500;">/</div>
+            <div id="folderList" style="flex:1; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:10px;"></div>
+            <button onclick="confirmFolder()">确认选择当前目录</button>
+        </div>
+    </div>
+
+<script>
+    let token = localStorage.getItem('token');
+    let curCid = "0", curPathName = "根目录";
+    let isEditMode = false; // 标记当前文件夹选择器是为编辑服务的
+    let allTasks = [];      // 缓存任务列表用于编辑回显
+
+    if(token) showApp();
+
+    // --- 核心 ---
+    function logout() { localStorage.clear(); location.reload(); }
+
+    function showApp() {
+        document.getElementById('currentUser').innerText = localStorage.getItem('username') || '用户';
+        document.getElementById('authScreen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        loadConfig();
+        loadTasks();
+        setInterval(loadTasks, 5000);
+    }
+
+    async function request(endpoint, method='GET', body=null) {
+        const headers = { 'Content-Type': 'application/json' };
+        if(token) headers['Authorization'] = `Bearer ${token}`;
+        try {
+            const res = await fetch(`/api${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
+            if(res.status === 401) { logout(); return { success: false, msg: "登录失效" }; }
+            return await res.json();
+        } catch(e) { console.error(e); return { success: false, msg: "网络错误" }; }
+    }
+
+    async function doLogin() {
+        const u = document.getElementById('username').value;
+        const p = document.getElementById('password').value;
+        const res = await request('/login', 'POST', { username: u, password: p });
+        if(res.success) {
+            token = res.token; localStorage.setItem('token', token);
+            localStorage.setItem('username', res.username);
+            showApp();
+        } else alert(res.msg);
+    }
+    async function doRegister() {
+        const u = document.getElementById('username').value;
+        const p = document.getElementById('password').value;
+        const res = await request('/register', 'POST', { username: u, password: p });
+        if(res.success) alert("注册成功，请登录"); else alert(res.msg);
+    }
+
+    async function loadConfig() {
+        const res = await request('/config');
+        if(res.name) {
+            document.getElementById('accountStatus').innerText = `✅ 已连接: ${res.name}`;
+            document.getElementById('accountStatus').style.color = '#10b981';
+            document.getElementById('cookieInput').placeholder = "Cookie 已保存";
+        }
+    }
+    async function saveConfig() {
+        const cookie = document.getElementById('cookieInput').value;
+        if(!cookie) return alert("无内容");
+        const res = await request('/config', 'POST', { cookie });
+        if(res.success) { alert("连接成功"); loadConfig(); } else alert(res.msg);
+    }
+
+    // --- Cron 工具 ---
+    function getCronParts(prefix) {
+        return ['_m', '_h', '_dom', '_mon', '_dow'].map(s => document.getElementById(prefix + s).value.trim());
+    }
+    
+    function updateCronPreview(mode) {
+        const prefix = mode === 'edit' ? 'edit_cron' : 'cron';
+        const resultId = mode === 'edit' ? 'editCronResult' : 'cronResult';
+        
+        const vals = getCronParts(prefix);
+        const hasValue = vals.some(v => v !== "");
+        
+        if (!hasValue) {
+            document.getElementById(resultId).innerText = "执行策略: " + (mode === 'edit' ? "无 (停止定时)" : "仅一次 (立即执行)");
+            document.getElementById(resultId).style.color = "#6b7280";
+            return "";
+        }
+        
+        const finalParts = vals.map(v => v === "" ? "*" : v);
+        const cronStr = finalParts.join(" ");
+        let desc = `Cron: ${cronStr}`;
+        if(cronStr === "* * * * *") desc = "⚠️ 每分钟执行";
+        
+        document.getElementById(resultId).innerText = desc;
+        document.getElementById(resultId).style.color = "#10b981";
+        return cronStr;
+    }
+
+    function clearCron(mode) {
+        const prefix = mode === 'edit' ? 'edit_cron' : 'cron';
+        ['_m', '_h', '_dom', '_mon', '_dow'].forEach(s => document.getElementById(prefix + s).value = '');
+        updateCronPreview(mode);
+    }
+
+    // --- 任务操作 ---
+
+    async function createTask() {
+        const cronExpression = updateCronPreview('create');
+        const payload = {
+            taskName: document.getElementById('taskName').value,
+            shareUrl: document.getElementById('shareUrl').value,
+            password: document.getElementById('accessCode').value,
+            targetCid: document.getElementById('targetCid').value,
+            targetName: document.getElementById('targetPath').value,
+            cronExpression: cronExpression
+        };
+        if(!payload.shareUrl) return alert("分享链接不能为空");
+        const res = await request('/task', 'POST', payload);
+        if(res.success) {
+            document.getElementById('taskName').value = '';
+            document.getElementById('shareUrl').value = '';
+            alert('✅ 任务创建成功'); loadTasks();
+        } else alert(res.msg);
+    }
+
+    async function loadTasks() {
+        const tasks = await request('/tasks');
+        allTasks = tasks; // 缓存
+        const html = tasks.map(t => `
+            <div class="task-item ${t.status}">
+                <div class="task-header">
+                    <div>
+                        <a href="${t.shareUrl || '#'}" target="_blank" class="task-link">${t.taskName || '未命名'} 🔗</a>
+                        <div class="task-meta">
+                            <span>📂 ${t.targetName}</span>
+                            <span>|</span>
+                            <span>⏱️ ${t.cronExpression ? t.cronExpression : '手动'}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem; margin-right:5px;">编辑</button>
+                        <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
+                    </div>
+                </div>
+                <div class="task-log">${t.status === 'scheduled' ? '⏳' : (t.status==='success'?'✅':'▶️')} ${t.log || '等待中...'}</div>
+            </div>
+        `).join('');
+        document.getElementById('taskList').innerHTML = html || '<div style="text-align:center; color:#999;">暂无任务</div>';
+    }
+
+    async function deleteTask(id) {
+        if(confirm('确定删除?')) { await request(`/task/${id}`, 'DELETE'); loadTasks(); }
+    }
+
+    // --- 编辑功能 (新增) ---
+
+    function openEditModal(id) {
+        const task = allTasks.find(t => t.id === id);
+        if(!task) return;
+
+        document.getElementById('editTaskId').value = id;
+        document.getElementById('editTaskName').value = task.taskName || '';
+        document.getElementById('editShareUrl').value = task.shareUrl || '';
+        document.getElementById('editAccessCode').value = task.receiveCode || '';
+        document.getElementById('editTargetCid').value = task.targetCid || '0';
+        document.getElementById('editTargetPath').value = task.targetName || '根目录';
+
+        // 还原 Cron
+        if (task.cronExpression) {
+            const parts = task.cronExpression.split(' ');
+            if (parts.length === 5) {
+                ['m','h','dom','mon','dow'].forEach((k, i) => {
+                    document.getElementById(`edit_cron_${k}`).value = parts[i] === '*' ? '' : parts[i];
+                });
+            }
+        } else {
+            clearCron('edit');
+        }
+        updateCronPreview('edit');
+        
+        document.getElementById('editModal').style.display = 'flex';
+    }
+
+    async function updateTask() {
+        const id = document.getElementById('editTaskId').value;
+        const cronExp = updateCronPreview('edit');
+        
+        const payload = {
+            taskName: document.getElementById('editTaskName').value,
+            shareUrl: document.getElementById('editShareUrl').value,
+            password: document.getElementById('editAccessCode').value,
+            targetCid: document.getElementById('editTargetCid').value,
+            targetName: document.getElementById('editTargetPath').value,
+            cronExpression: cronExp
+        };
+
+        const res = await request(`/task/${id}`, 'PUT', payload);
+        if(res.success) {
+            document.getElementById('editModal').style.display = 'none';
+            alert('✅ 任务更新成功');
+            loadTasks();
+        } else {
+            alert("更新失败: " + res.msg);
+        }
+    }
+
+    // --- 目录选择 ---
+
+    async function openFolderPicker(editMode) {
+        isEditMode = editMode;
+        document.getElementById('folderModal').style.display = 'flex';
+        loadFolders("0");
+    }
+
+    async function loadFolders(cid) {
+        const listDiv = document.getElementById('folderList');
+        listDiv.innerHTML = '<div style="padding:10px;">加载中...</div>';
+        const res = await request(`/folders?cid=${cid}`);
+        if(res.success) {
+            curCid = cid;
+            const paths = res.data.path || [];
+            curPathName = paths.length ? paths.map(p=>p.name).join(' > ') : '根目录';
+            document.getElementById('folderBreadcrumb').innerText = curPathName;
+            
+            let html = cid !== '0' ? `<div style="padding:10px; cursor:pointer; background:#f9fafb;" onclick="loadFolders('${paths.length>1 ? paths[paths.length-2].cid : '0'}')">⬅️ 返回上一级</div>` : '';
+            res.data.list.forEach(f => {
+                html += `<div style="padding:10px; border-bottom:1px solid #eee; cursor:pointer;" onclick="loadFolders('${f.cid}')">📁 ${f.name}</div>`;
+            });
+            listDiv.innerHTML = html || '<div style="padding:10px;">空文件夹</div>';
+        }
+    }
+
+    function confirmFolder() {
+        if (isEditMode) {
+            document.getElementById('editTargetPath').value = curPathName;
+            document.getElementById('editTargetCid').value = curCid;
+        } else {
+            document.getElementById('targetPath').value = curPathName;
+            document.getElementById('targetCid').value = curCid;
+        }
+        document.getElementById('folderModal').style.display = 'none';
+    }
+</script>
+</body>
+</html>
