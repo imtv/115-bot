@@ -1,4 +1,4 @@
-# 115 Task Master Pro
+# 115-bot
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-green.svg)
