@@ -37,7 +37,8 @@
 
 推荐使用 Docker Compose 进行部署。
 
-### 1. 新建 docker-compose.yml
+### 1. 将项目所有文件下载并存储到本地
+### 2. 新建 docker-compose.yml（放在项目根目录）
 
 ```yaml
 version: "3"
