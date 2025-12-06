@@ -57,24 +57,11 @@ services:
 ### 2. 启动服务
 
 ```bash
-docker-compose up -d
+docker-compose up -d --build
 ```
 
 访问：http://localhost:3115
 
-## 🛠 本地开发与构建
-
-如在中国大陆网络环境构建镜像，建议使用加速源：
-
-```dockerfile
-FROM docker.m.daocloud.io/node:18-alpine
-```
-
-构建命令：
-
-```bash
-docker build -t 115-task-master .
-```
 
 ## 📝 使用说明
 ### 1.注册账户
