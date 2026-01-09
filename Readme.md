@@ -40,7 +40,7 @@
 ### 1. 将项目所有文件下载并存储到本地并打开文件夹
 ```bash
 git clone --depth 1 https://github.com/knowusf/115-bot.git
-cd /115-bot
+cd 115-bot
 ```
 
 ### 2. 启动服务
