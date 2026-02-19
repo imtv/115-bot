@@ -173,6 +173,23 @@ class Service115 {
         }
     }
 
+    // 8. 批量移动文件
+    async moveFiles(cookie, fileIds, targetCid) {
+        const postData = qs.stringify({
+            pid: targetCid,
+            fid: fileIds
+        });
+        try {
+            const res = await axios.post("https://webapi.115.com/files/move", postData, {
+                headers: this._getHeaders(cookie)
+            });
+            if (res.data.state) return { success: true };
+            return { success: false, msg: res.data.error || "移动失败" };
+        } catch (e) {
+            return { success: false, msg: "移动API异常: " + e.message };
+        }
+    }
+
     // 7. 获取最近上传/转存的文件（用于记录 ID 以便下次删除）
     async getRecentItems(cookie, cid, limit = 10) {
         if (limit <= 0) return { success: true, items: [] };
