@@ -130,6 +130,12 @@ class Service115 {
                 httpsAgent: this.agent
             });
             if (res.data.state) return { success: true, count: fileIds.length };
+            
+            // 【修复】如果提示"文件已接收"，说明账号内已存在该文件，视为成功
+            if (res.data.error && res.data.error.includes("无需重复接收")) {
+                return { success: true, count: 0, msg: "文件已存在(115自动去重)，请检查网盘其他目录" };
+            }
+
             return { success: false, msg: res.data.error || res.data.msg || "转存被拒绝" };
         } catch (e) {
             return { success: false, msg: "转存API请求失败: " + e.message };
