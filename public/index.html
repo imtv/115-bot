@@ -60,7 +60,10 @@
 
         <!-- 管理员设置面板 (默认隐藏) -->
         <div class="card" id="adminPanel" style="display:none; border: 2px solid #3b82f6;">
-            <h4>🔧 管理员设置</h4>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h4 style="margin:0;">🔧 管理员设置</h4>
+                <button onclick="logoutAdmin()" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">退出登录</button>
+            </div>
             <div style="margin-bottom: 10px;">
                 <label style="font-size:0.8rem;">115 Cookie</label>
                 <input type="text" id="cookieInput" placeholder="输入 Cookie (UID/CID/SEID...)">
@@ -251,6 +254,13 @@
         } else {
             document.getElementById('adminLoginModal').style.display = 'flex';
         }
+    }
+
+    function logoutAdmin() {
+        localStorage.removeItem('adminToken');
+        adminToken = null;
+        document.getElementById('adminPanel').style.display = 'none';
+        loadTasks(); // 刷新列表以隐藏管理按钮
     }
 
     async function doAdminLogin() {
