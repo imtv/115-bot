@@ -495,6 +495,21 @@ async function processTask(userId, task, isCron = false) {
 
             const logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
             updateTaskStatus(userId, task, finalStatus, logMsg);
+        } else if (saveResult.status === 'exists') {
+            // 【新增】处理“文件已存在”的情况：检查目标文件夹是否真的有文件
+            // 有时候 115 会误报，或者文件确实在别的目录。我们需要确认目标目录里有没有东西。
+            const checkFiles = await service115.getRecentItems(cookie, task.targetCid, 5);
+            
+            if (checkFiles.success && checkFiles.items.length > 0) {
+                // 目标文件夹里有文件，说明虽然提示重复，但文件确实在里面（可能是秒传成功）
+                task.lastSuccessDate = todayStr;
+                task.lastSavedFileIds = checkFiles.items;
+                updateTaskStatus(userId, task, isCron ? 'scheduled' : 'success', `[${formatTime()}] 转存成功 (秒传/已存在)`);
+            } else {
+                // 目标文件夹是空的，说明文件在别的地方（比如根目录）
+                const finalStatus = isCron ? 'scheduled' : 'failed';
+                updateTaskStatus(userId, task, finalStatus, `[${formatTime()}] ⚠️ 失败: 文件已存在于网盘其他位置(请检查根目录)，无法存入新文件夹`);
+            }
         } else {
             const finalStatus = isCron ? 'scheduled' : 'failed'; 
             updateTaskStatus(userId, task, finalStatus, `转存失败: ${saveResult.msg}`);
