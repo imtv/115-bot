@@ -4,14 +4,11 @@ const https = require('https');
 
 class Service115 {
     constructor() {
-        this.agent = new https.Agent({ keepAlive: true });
-        // 模拟微信小程序环境，目前相对稳定
+        // 移除 keepAlive agent，避免长时间运行后出现 socket hang up / 网络错误
         this.headers = {
-            "Host": "webapi.115.com",
-            "Connection": "keep-alive",
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36 MicroMessenger/6.8.0(0x16080000) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF XWEB/30626",
-            "Referer": "https://servicewechat.com/wx2c744c010a61b0fa/94/page-frame.html",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+            "Referer": "https://115.com/",
             "Accept-Encoding": "gzip, deflate, br",
             "Accept": "*/*"
         };
@@ -27,7 +24,6 @@ class Service115 {
         try {
             const res = await axios.get("https://webapi.115.com/files/index_info", {
                 headers: this._getHeaders(cookie),
-                httpsAgent: this.agent,
                 timeout: 6000
             });
             if (res.data.state) {
@@ -44,7 +40,6 @@ class Service115 {
         try {
             const res = await axios.get("https://webapi.115.com/files", {
                 headers: this._getHeaders(cookie),
-                httpsAgent: this.agent,
                 params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: limit, type: 0, format: "json" }
             });
             if (res.data.state) {
@@ -68,8 +63,7 @@ class Service115 {
         });
         try {
             const res = await axios.post("https://webapi.115.com/files/add", postData, {
-                headers: this._getHeaders(cookie),
-                httpsAgent: this.agent
+                headers: this._getHeaders(cookie)
             });
             
             if (res.data.state) {
@@ -101,7 +95,6 @@ class Service115 {
         try {
             const res = await axios.get("https://webapi.115.com/share/snap", {
                 headers: this._getHeaders(cookie),
-                httpsAgent: this.agent,
                 timeout: 10000,
                 params: { share_code: shareCode, receive_code: receiveCode, offset: 0, limit: 100, cid: cid }
             });
@@ -140,8 +133,7 @@ class Service115 {
 
         try {
             const res = await axios.post("https://webapi.115.com/share/receive", postData, {
-                headers: this._getHeaders(cookie),
-                httpsAgent: this.agent
+                headers: this._getHeaders(cookie)
             });
             if (res.data.state) return { success: true, count: fileIds.length };
             
@@ -164,8 +156,7 @@ class Service115 {
         });
         try {
             const res = await axios.post("https://webapi.115.com/rb/delete", postData, {
-                headers: this._getHeaders(cookie),
-                httpsAgent: this.agent
+                headers: this._getHeaders(cookie)
             });
             if (res.data.state) return { success: true };
             return { success: false, msg: res.data.error || "删除失败" };
@@ -180,7 +171,6 @@ class Service115 {
         try {
             const res = await axios.get("https://webapi.115.com/files", {
                 headers: this._getHeaders(cookie),
-                httpsAgent: this.agent,
                 params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: limit, type: 0, format: "json" }
             });
             if (res.data.state && res.data.data) {
