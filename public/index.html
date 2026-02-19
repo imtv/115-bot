@@ -43,6 +43,7 @@
         .modal-content { background: white; padding: 20px; border-radius: 12px; width: 450px; max-height: 80vh; display: flex; flex-direction: column; overflow-y: auto; }
         
         .row { display: flex; gap: 10px; }
+        .file-item:hover { background-color: #f3f4f6; }
     </style>
 </head>
 <body>
@@ -179,18 +180,27 @@
     </div>
 
     <div id="folderModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="width: 600px; max-height: 85vh;">
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                <strong>选择保存位置</strong>
+                <strong>📂 文件管理</strong>
                 <span onclick="document.getElementById('folderModal').style.display='none'" style="cursor:pointer; font-size:1.5rem;">&times;</span>
             </div>
-            <div style="display:flex; gap:5px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #eee;">
-                <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem;">
-                <button onclick="createNewFolder()" class="btn-outline" style="width:auto; white-space:nowrap; padding:8px 12px;">新建</button>
+            
+            <!-- Toolbar -->
+            <div style="display:flex; gap:10px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #eee; align-items: center;">
+                <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem; flex:1;">
+                <button onclick="createNewFolder()" class="btn-outline" style="width:auto; padding:8px 12px;">➕ 新建</button>
+                <div style="width: 1px; height: 24px; background: #eee;"></div>
+                <button onclick="deleteSelected()" class="btn-danger" style="width:auto; padding:8px 12px;">🗑️ 删除选中</button>
             </div>
-            <div id="folderBreadcrumb" style="font-size:0.85rem; color:#2563eb; margin-bottom:10px; font-weight:500;">/</div>
-            <div id="folderList" style="flex:1; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:10px;"></div>
-            <button onclick="confirmFolder()">确认选择当前目录</button>
+
+            <div id="folderBreadcrumb" style="font-size:0.85rem; color:#2563eb; margin-bottom:10px; font-weight:500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">/</div>
+            <div id="folderList" style="flex:1; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:10px; background: #f9fafb;"></div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <span style="font-size: 0.8rem; color: #666; align-self: center;" id="selectionCount"></span>
+                <button onclick="confirmFolder()" style="width: auto;">✅ 选择当前目录</button>
+            </div>
         </div>
     </div>
 
@@ -200,6 +210,7 @@
     let isEditMode = false; // 标记当前文件夹选择器是为编辑服务的
     let isSettingRoot = false; // 标记是否正在设置全局根目录
     let allTasks = [];      // 缓存任务列表用于编辑回显
+    let selectedFiles = new Set(); // 选中的文件ID集合
 
     // 初始化
     (function init() {
@@ -442,6 +453,7 @@
     async function loadFolders(cid) {
         const listDiv = document.getElementById('folderList');
         listDiv.innerHTML = '<div style="padding:10px;">加载中...</div>';
+        selectedFiles.clear(); updateSelectionUI();
         
         const url = cid ? `/folders?cid=${cid}` : '/folders';
         const res = await request(url);
@@ -464,11 +476,47 @@
             let html = (curCid !== '0') ? `<div style="padding:10px; cursor:pointer; background:#f9fafb;" onclick="loadFolders('${parentCid}')">⬅️ 返回上一级</div>` : '';
             
             res.data.list.forEach(f => {
-                html += `<div style="padding:10px; border-bottom:1px solid #eee; cursor:pointer;" onclick="loadFolders('${f.cid}')">📁 ${f.name}</div>`;
+                const isFolder = f.type === 'folder';
+                const icon = isFolder ? '📁' : '📄';
+                // 文件夹点击名字进入，文件点击无动作(或预览)
+                // Checkbox 用于选择
+                html += `
+                    <div class="file-item" style="padding:8px 10px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:8px; cursor:default;">
+                        <input type="checkbox" value="${f.id}" onchange="toggleSelection('${f.id}')" style="width:auto; margin:0; cursor:pointer;">
+                        <span style="cursor:${isFolder ? 'pointer' : 'default'}; flex:1; display:flex; align-items:center; gap:5px;" onclick="${isFolder ? `loadFolders('${f.cid}')` : ''}">
+                            <span>${icon}</span>
+                            <span style="${isFolder ? 'font-weight:500; color:#374151;' : 'color:#6b7280;'}">${f.name}</span>
+                        </span>
+                    </div>
+                `;
             });
             listDiv.innerHTML = html || '<div style="padding:10px;">空文件夹</div>';
         } else {
             listDiv.innerHTML = '<div style="padding:10px; color:red;">加载失败</div>';
+        }
+    }
+
+    function toggleSelection(id) {
+        if(selectedFiles.has(id)) selectedFiles.delete(id);
+        else selectedFiles.add(id);
+        updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+        const count = selectedFiles.size;
+        document.getElementById('selectionCount').innerText = count > 0 ? `已选 ${count} 项` : '';
+    }
+
+    async function deleteSelected() {
+        if(selectedFiles.size === 0) return alert("请先选择要删除的文件/文件夹");
+        if(!confirm(`确定删除选中的 ${selectedFiles.size} 项吗？(将移入回收站)`)) return;
+        
+        const res = await request('/files/delete', 'POST', { fileIds: Array.from(selectedFiles) });
+        if(res.success) {
+            alert('删除成功');
+            loadFolders(curCid);
+        } else {
+            alert("删除失败: " + res.msg);
         }
     }
 
