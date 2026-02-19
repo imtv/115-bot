@@ -80,6 +80,7 @@ function initSystem() {
                         ...t,
                         lastShareHash: t.lastShareHash || null,
                         lastSuccessDate: t.lastSuccessDate || null,
+                        lastSavedFileIds: t.lastSavedFileIds || [], // 初始化旧文件记录
                     }));
                     
                     let count = 0;
@@ -238,6 +239,19 @@ app.post('/api/task', authenticate, async (req, res) => {
             finalTaskName = shareInfo.shareTitle; 
         }
 
+        // 【新增】自动创建同名文件夹
+        // 既然回归 Node.js 方案，这里补上你想要的“自动归档”功能：
+        // 自动在目标目录下创建一个以“任务名”命名的文件夹，并将文件存入其中。
+        try {
+            const folderRes = await service115.addFolder(cookie, finalTargetCid, finalTaskName);
+            if (folderRes.success) {
+                finalTargetCid = folderRes.cid; // 更新目标CID为新创建的文件夹
+                finalTargetName = folderRes.name;
+            }
+        } catch (e) {
+            console.warn(`[Task] 自动创建文件夹失败，将直接存入原目标目录: ${e.message}`);
+        }
+
         // 3. 创建任务对象
         const newTask = {
             id: Date.now(),
@@ -253,6 +267,7 @@ app.post('/api/task', authenticate, async (req, res) => {
             // 【新增监控字段】
             lastShareHash: shareInfo.fileIds.join(','), // 首次运行时计算哈希
             lastSuccessDate: null, 
+            lastSavedFileIds: [],
             historyCount: 0,
             createTime: Date.now(),
         };
@@ -413,7 +428,26 @@ async function processTask(userId, task, isCron = false) {
     // --- 2. 检查分享内容更新 (通过哈希文件列表) ---
     try {
         // 注意：此处已移除自动创建文件夹的逻辑。转存将直接在 targetCid 下进行。
-        const shareInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode);
+        let shareInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode);
+        
+        // 【新增】智能穿透：如果分享链接里只有一个文件夹，则自动提取其内容
+        if (shareInfo.list && shareInfo.list.length === 1) {
+            const item = shareInfo.list[0];
+            // 115 API 特征：文件夹有 cid 但通常没有 fid (在 snap 接口中)
+            if (item.cid && !item.fid) {
+                console.log(`[Task] 检测到单文件夹 [${item.n}]，自动进入提取内容...`);
+                try {
+                    const innerInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode, item.cid);
+                    // 只有当内部有文件时才替换，防止空文件夹导致异常
+                    if (innerInfo.fileIds.length > 0) {
+                        shareInfo = innerInfo;
+                    }
+                } catch (e) {
+                    console.warn(`[Task] 尝试进入文件夹失败，将按原样转存: ${e.message}`);
+                }
+            }
+        }
+
         const fileIds = shareInfo.fileIds;
         
         if (!fileIds || fileIds.length === 0) {
@@ -434,6 +468,13 @@ async function processTask(userId, task, isCron = false) {
         // 首次运行或内容已更新，记录新哈希值（用于下次对比）
         task.lastShareHash = currentShareHash; 
         
+        // --- 2.5 清理旧版本文件 (关键修改) ---
+        if (task.lastSavedFileIds && task.lastSavedFileIds.length > 0) {
+            console.log(`[Task] 正在清理旧版本文件: ${task.lastSavedFileIds.length} 个`);
+            // 尝试删除，即使失败（例如已被手动删除）也不阻断后续流程
+            await service115.deleteFiles(cookie, task.lastSavedFileIds);
+        }
+
         // --- 3. 执行转存 ---
         const saveResult = await service115.saveFiles(cookie, task.targetCid, task.shareCode, task.receiveCode, fileIds);
 
@@ -442,6 +483,14 @@ async function processTask(userId, task, isCron = false) {
             const finalStatus = isCron ? 'scheduled' : 'success';
             // 【新增】成功后记录日期
             task.lastSuccessDate = todayStr;
+            
+            // 【新增】获取刚刚保存的文件ID，存入 task 以便下次删除
+            // 假设按时间排序，最新的 N 个文件即为本次转存的文件
+            const recent = await service115.getRecentItems(cookie, task.targetCid, saveResult.count);
+            if (recent.success) {
+                task.lastSavedFileIds = recent.items;
+            }
+
             updateTaskStatus(userId, task, finalStatus, `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`);
         } else {
             const finalStatus = isCron ? 'scheduled' : 'failed'; 
@@ -465,6 +514,7 @@ function updateTaskStatus(userId, task, status, log) {
             t.log = log;
             t.lastShareHash = task.lastShareHash;
             t.lastSuccessDate = task.lastSuccessDate;
+            t.lastSavedFileIds = task.lastSavedFileIds; // 保存文件ID记录
         }
     }
     saveUserTasks(userId);
