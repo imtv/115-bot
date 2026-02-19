@@ -123,6 +123,19 @@ app.get('/api/folders', async (req, res) => {
     }
 });
 
+// 10. 创建文件夹 (公开，用于选择目录时新建)
+app.post('/api/folder', async (req, res) => {
+    const { parentCid, folderName } = req.body;
+    if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
+    
+    try {
+        const result = await service115.addFolder(globalSettings.cookie, parentCid, folderName);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ success: false, msg: e.message });
+    }
+});
+
 // 11. 批量删除文件 (公开)
 app.post('/api/files/delete', async (req, res) => {
     const { fileIds } = req.body;
@@ -130,6 +143,19 @@ app.post('/api/files/delete', async (req, res) => {
     
     try {
         const result = await service115.deleteFiles(globalSettings.cookie, fileIds);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ success: false, msg: e.message });
+    }
+});
+
+// 12. 批量移动文件 (公开)
+app.post('/api/files/move', async (req, res) => {
+    const { fileIds, targetCid } = req.body;
+    if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
+    
+    try {
+        const result = await service115.moveFiles(globalSettings.cookie, fileIds, targetCid);
         res.json(result);
     } catch (e) {
         res.status(500).json({ success: false, msg: e.message });
