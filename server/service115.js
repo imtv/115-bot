@@ -76,11 +76,13 @@ class Service115 {
             
             if (res.data.state) {
                 // 115 API 创建文件夹返回的是 file_id，不是 cid
-                return { success: true, cid: res.data.data.file_id || res.data.data.cid, name: res.data.data.file_name };
+                if (res.data.data) {
+                    return { success: true, cid: res.data.data.file_id || res.data.data.cid, name: res.data.data.file_name };
+                }
             }
             
-            // 【修复】如果提示"目录名称已存在"，则尝试查找并返回已存在的文件夹CID
-            if (res.data.error && res.data.error.includes("已存在")) {
+            // 【修复】如果提示"目录名称已存在" 或者 创建成功但未返回数据，则尝试查找并返回已存在的文件夹CID
+            if ((res.data.error && res.data.error.includes("已存在")) || (res.data.state && !res.data.data)) {
                 // 获取父目录下较多的文件夹列表(1000个)，尝试找到同名的
                 const listRes = await this.getFolderList(cookie, parentCid, 1000);
                 if (listRes.success && listRes.list) {
@@ -88,6 +90,10 @@ class Service115 {
                     if (existing) {
                         return { success: true, cid: existing.cid, name: existing.name, msg: "文件夹已存在，自动关联" };
                     }
+                }
+                // 如果是创建成功但没找到，提示刷新
+                if (res.data.state) {
+                    throw new Error("文件夹创建成功，但在列表中暂时未找到，请稍后刷新页面查看");
                 }
                 throw new Error("创建失败: 115提示目录已存在，但在该目录下未找到同名文件夹(可能是同名文件导致)，请检查");
             }
