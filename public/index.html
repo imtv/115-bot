@@ -9,13 +9,8 @@
         :root { --primary: #3b82f6; --bg: #f3f4f6; --card: #fff; --text: #1f2937; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; flex-direction: column; }
         
-        /* Auth Screen */
-        #authScreen { position: fixed; inset: 0; background: #fff; z-index: 100; display: flex; align-items: center; justify-content: center; }
-        .auth-box { width: 320px; padding: 40px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
-        .auth-box h2 { margin-top: 0; color: var(--primary); }
-        
         /* Main App */
-        .app-container { max-width: 800px; margin: 40px auto; width: 90%; flex: 1; display: none; }
+        .app-container { max-width: 800px; margin: 40px auto; width: 90%; flex: 1; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
         
@@ -57,31 +52,35 @@
 </head>
 <body>
 
-    <div id="authScreen">
-        <div class="auth-box">
-            <h2>115 Task Master</h2>
-            <input type="text" id="username" placeholder="用户名">
-            <input type="password" id="password" placeholder="密码">
-            <button onclick="doLogin()">登录</button>
-            <button onclick="doRegister()" class="btn-outline" style="margin-top: 10px;">注册新账号</button>
-        </div>
-    </div>
-
-    <div class="app-container" id="app">
+    <div class="app-container">
         <div class="header">
-            <h3>👋 你好, <span id="currentUser">用户</span></h3>
-            <button onclick="logout()" class="btn-outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">🚪 退出登录</button>
+            <h3>🤖 115 转存机器人</h3>
+            <button onclick="openAdminModal()" class="btn-outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⚙️ 管理后台</button>
         </div>
 
-        <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <strong>📂 115 账号状态</strong>
-                <span id="accountStatus" style="font-size:0.9rem; color:gray">未连接</span>
+        <!-- 管理员设置面板 (默认隐藏) -->
+        <div class="card" id="adminPanel" style="display:none; border: 2px solid #3b82f6;">
+            <h4>🔧 管理员设置</h4>
+            <div style="margin-bottom: 10px;">
+                <label style="font-size:0.8rem;">115 Cookie</label>
+                <input type="text" id="cookieInput" placeholder="输入 Cookie (UID/CID/SEID...)">
             </div>
-            <div style="margin-top: 15px; display: flex; gap: 10px;">
-                <input type="text" id="cookieInput" placeholder="输入 Cookie (UID/CID/SEID...)" style="margin:0;">
-                <button onclick="saveConfig()" style="width: 100px; margin:0;">保存</button>
+            <div style="margin-bottom: 10px;">
+                <label style="font-size:0.8rem;">默认根目录 (朋友添加任务时默认存到这里)</label>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="rootPathName" readonly style="background:#eee;">
+                    <input type="hidden" id="rootCid">
+                    <button onclick="openFolderPicker(false, true)" class="btn-outline" style="width:80px;">选择</button>
+                </div>
             </div>
+            <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+                <label style="font-size:0.8rem;">管理员账号设置</label>
+                <div class="row">
+                    <input type="text" id="setAdminUser" placeholder="用户名">
+                    <input type="text" id="setAdminPass" placeholder="密码">
+                </div>
+            </div>
+            <button onclick="saveSettings()">保存设置</button>
         </div>
 
         <div class="card">
@@ -99,8 +98,8 @@
             <div class="row">
                 <input type="text" id="accessCode" placeholder="提取码 (可选)">
                 <div style="display:flex; gap:5px; width: 100%;">
-                    <input type="text" id="targetPath" value="根目录" readonly style="background:#eee;">
-                    <input type="hidden" id="targetCid" value="0">
+                    <input type="text" id="targetPath" placeholder="默认根目录" readonly style="background:#eee;">
+                    <input type="hidden" id="targetCid" value="">
                     <button onclick="openFolderPicker(false)" class="btn-outline" style="width:70px;">选择目录</button>
                 </div>
             </div>
@@ -182,11 +181,26 @@
         </div>
     </div>
 
+    <!-- Admin Login Modal -->
+    <div id="adminLoginModal" class="modal">
+        <div class="modal-content" style="width: 300px;">
+            <h3 style="margin-top:0;">管理员验证</h3>
+            <input type="text" id="adminUser" placeholder="用户名 (默认 admin)" style="margin-bottom:10px;">
+            <input type="password" id="adminPwd" placeholder="密码 (默认 admin)">
+            <button onclick="doAdminLogin()">确认</button>
+            <button onclick="document.getElementById('adminLoginModal').style.display='none'" class="btn-outline" style="margin-top:10px;">取消</button>
+        </div>
+    </div>
+
     <div id="folderModal" class="modal">
         <div class="modal-content">
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                 <strong>选择保存位置</strong>
                 <span onclick="document.getElementById('folderModal').style.display='none'" style="cursor:pointer; font-size:1.5rem;">&times;</span>
+            </div>
+            <div style="display:flex; gap:5px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #eee;">
+                <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem;">
+                <button onclick="createNewFolder()" class="btn-outline" style="width:auto; white-space:nowrap; padding:8px 12px;">新建</button>
             </div>
             <div id="folderBreadcrumb" style="font-size:0.85rem; color:#2563eb; margin-bottom:10px; font-weight:500;">/</div>
             <div id="folderList" style="flex:1; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:10px;"></div>
@@ -195,65 +209,84 @@
     </div>
 
 <script>
-    let token = localStorage.getItem('token');
+    let adminToken = localStorage.getItem('adminToken');
     let curCid = "0", curPathName = "根目录";
     let isEditMode = false; // 标记当前文件夹选择器是为编辑服务的
+    let isSettingRoot = false; // 标记是否正在设置全局根目录
     let allTasks = [];      // 缓存任务列表用于编辑回显
 
-    if(token) showApp();
-
-    // --- 核心 ---
-    function logout() { localStorage.clear(); location.reload(); }
-
-    function showApp() {
-        document.getElementById('currentUser').innerText = localStorage.getItem('username') || '用户';
-        document.getElementById('authScreen').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-        loadConfig();
+    // 初始化
+    (function init() {
+        if(adminToken) {
+            document.getElementById('adminPanel').style.display = 'block';
+            loadSettings();
+        }
         loadTasks();
         setInterval(loadTasks, 5000);
-    }
+    })();
 
     async function request(endpoint, method='GET', body=null) {
         const headers = { 'Content-Type': 'application/json' };
-        if(token) headers['Authorization'] = `Bearer ${token}`;
+        if(adminToken) headers['x-admin-token'] = adminToken;
         try {
             const res = await fetch(`/api${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
-            if(res.status === 401) { logout(); return { success: false, msg: "登录失效" }; }
+            if(res.status === 403) { 
+                // 权限失效，但不强制刷新页面，只是隐藏管理功能
+                localStorage.removeItem('adminToken');
+                adminToken = null;
+                document.getElementById('adminPanel').style.display = 'none';
+                return { success: false, msg: "管理员权限失效" }; 
+            }
             return await res.json();
         } catch(e) { console.error(e); return { success: false, msg: "网络错误" }; }
     }
 
-    async function doLogin() {
-        const u = document.getElementById('username').value;
-        const p = document.getElementById('password').value;
-        const res = await request('/login', 'POST', { username: u, password: p });
-        if(res.success) {
-            token = res.token; localStorage.setItem('token', token);
-            localStorage.setItem('username', res.username);
-            showApp();
-        } else alert(res.msg);
-    }
-    async function doRegister() {
-        const u = document.getElementById('username').value;
-        const p = document.getElementById('password').value;
-        const res = await request('/register', 'POST', { username: u, password: p });
-        if(res.success) alert("注册成功，请登录"); else alert(res.msg);
-    }
-
-    async function loadConfig() {
-        const res = await request('/config');
-        if(res.name) {
-            document.getElementById('accountStatus').innerText = `✅ 已连接: ${res.name}`;
-            document.getElementById('accountStatus').style.color = '#10b981';
-            document.getElementById('cookieInput').placeholder = "Cookie 已保存";
+    // --- 管理员逻辑 ---
+    function openAdminModal() {
+        if(adminToken) {
+            // 已登录则切换显示/隐藏
+            const panel = document.getElementById('adminPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            if(panel.style.display === 'block') loadSettings();
+        } else {
+            document.getElementById('adminLoginModal').style.display = 'flex';
         }
     }
-    async function saveConfig() {
+
+    async function doAdminLogin() {
+        const u = document.getElementById('adminUser').value;
+        const p = document.getElementById('adminPwd').value;
+        const res = await request('/admin/login', 'POST', { username: u, password: p });
+        if(res.success) {
+            adminToken = res.token;
+            localStorage.setItem('adminToken', adminToken);
+            document.getElementById('adminLoginModal').style.display = 'none';
+            document.getElementById('adminPanel').style.display = 'block';
+            loadSettings();
+            loadTasks(); // 刷新列表以显示管理按钮
+        } else alert(res.msg);
+    }
+
+    async function loadSettings() {
+        const res = await request('/settings');
+        if(res.success && res.data) {
+            document.getElementById('cookieInput').value = res.data.cookie || '';
+            document.getElementById('rootCid').value = res.data.rootCid || '0';
+            document.getElementById('rootPathName').value = res.data.rootName || '根目录';
+            document.getElementById('setAdminUser').value = res.data.adminUser || 'admin';
+            document.getElementById('setAdminPass').value = res.data.adminPass || 'admin';
+        }
+    }
+
+    async function saveSettings() {
         const cookie = document.getElementById('cookieInput').value;
-        if(!cookie) return alert("无内容");
-        const res = await request('/config', 'POST', { cookie });
-        if(res.success) { alert("连接成功"); loadConfig(); } else alert(res.msg);
+        const rootCid = document.getElementById('rootCid').value;
+        const rootName = document.getElementById('rootPathName').value;
+        const adminUser = document.getElementById('setAdminUser').value;
+        const adminPass = document.getElementById('setAdminPass').value;
+        
+        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass });
+        if(res.success) alert("设置已保存"); else alert(res.msg);
     }
 
     // --- Cron 工具 ---
@@ -331,6 +364,7 @@
 
     async function loadTasks() {
         const tasks = await request('/tasks');
+        const isAdmin = !!adminToken;
         allTasks = tasks; // 缓存
         const html = tasks.map(t => `
             <div class="task-item ${t.status}">
@@ -344,9 +378,11 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:5px;">
-                        ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
-                        <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
-                        <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
+                        ${isAdmin ? `
+                            ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
+                            <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
+                            <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
+                        ` : ''}
                     </div>
                 </div>
                 <div class="task-log">${t.status === 'scheduled' ? '⏳' : (t.status==='success'?'✅':'▶️')} ${t.log || '等待中...'}</div>
@@ -413,24 +449,38 @@
 
     // --- 目录选择 ---
 
-    async function openFolderPicker(editMode) {
+    async function openFolderPicker(editMode, settingRoot = false) {
         isEditMode = editMode;
+        isSettingRoot = settingRoot;
         document.getElementById('folderModal').style.display = 'flex';
-        // 确保从根目录开始加载，防止定位错乱
-        loadFolders("0"); 
+        // 不传参数，让后端使用默认配置的根目录
+        loadFolders(); 
     }
 
     async function loadFolders(cid) {
         const listDiv = document.getElementById('folderList');
         listDiv.innerHTML = '<div style="padding:10px;">加载中...</div>';
-        const res = await request(`/folders?cid=${cid}`);
+        
+        const url = cid ? `/folders?cid=${cid}` : '/folders';
+        const res = await request(url);
+        
         if(res.success) {
-            curCid = cid;
             const paths = res.data.path || [];
+            
+            // 如果是初始加载(无cid)，则从返回的 path 中获取当前 cid (即后台设置的根目录)
+            if (paths.length > 0) {
+                curCid = paths[paths.length - 1].cid;
+            } else {
+                curCid = cid || "0";
+            }
+
             curPathName = paths.length ? paths.map(p=>p.name).join(' > ') : '根目录';
             document.getElementById('folderBreadcrumb').innerText = curPathName;
             
-            let html = cid !== '0' ? `<div style="padding:10px; cursor:pointer; background:#f9fafb;" onclick="loadFolders('${paths.length>1 ? paths[paths.length-2].cid : '0'}')">⬅️ 返回上一级</div>` : '';
+            // 计算上一级目录
+            let parentCid = (paths.length > 1) ? paths[paths.length-2].cid : '0';
+            let html = (curCid !== '0') ? `<div style="padding:10px; cursor:pointer; background:#f9fafb;" onclick="loadFolders('${parentCid}')">⬅️ 返回上一级</div>` : '';
+            
             res.data.list.forEach(f => {
                 html += `<div style="padding:10px; border-bottom:1px solid #eee; cursor:pointer;" onclick="loadFolders('${f.cid}')">📁 ${f.name}</div>`;
             });
@@ -440,10 +490,27 @@
         }
     }
 
+    async function createNewFolder() {
+        const name = document.getElementById('newFolderName').value;
+        if(!name) return alert("请输入文件夹名称");
+        
+        const res = await request('/folder', 'POST', { parentCid: curCid, folderName: name });
+        if(res.success) {
+            alert('创建成功');
+            document.getElementById('newFolderName').value = '';
+            loadFolders(curCid); // 刷新当前目录
+        } else {
+            alert("创建失败: " + res.msg);
+        }
+    }
+
     function confirmFolder() {
         if (isEditMode) {
             document.getElementById('editTargetPath').value = curPathName;
             document.getElementById('editTargetCid').value = curCid;
+        } else if (isSettingRoot) {
+            document.getElementById('rootPathName').value = curPathName;
+            document.getElementById('rootCid').value = curCid;
         } else {
             document.getElementById('targetPath').value = curPathName;
             document.getElementById('targetCid').value = curCid;
