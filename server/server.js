@@ -493,7 +493,8 @@ async function processTask(userId, task, isCron = false) {
                 task.lastSavedFileIds = recent.items;
             }
 
-            updateTaskStatus(userId, task, finalStatus, `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`);
+            const logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
+            updateTaskStatus(userId, task, finalStatus, logMsg);
         } else {
             const finalStatus = isCron ? 'scheduled' : 'failed'; 
             updateTaskStatus(userId, task, finalStatus, `转存失败: ${saveResult.msg}`);
