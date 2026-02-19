@@ -165,9 +165,15 @@ class Service115 {
     // 6. 批量删除文件 (移入回收站)
     async deleteFiles(cookie, fileIds) {
         if (!fileIds || fileIds.length === 0) return { success: true };
-        const postData = qs.stringify({
-            fid: fileIds
-        });
+        
+        const params = {};
+        if (Array.isArray(fileIds)) {
+            fileIds.forEach((id, i) => params[`fid[${i}]`] = id);
+        } else {
+            params['fid[0]'] = fileIds;
+        }
+        const postData = qs.stringify(params);
+
         try {
             const res = await axios.post("https://webapi.115.com/rb/delete", postData, {
                 headers: this._getHeaders(cookie)
@@ -181,10 +187,14 @@ class Service115 {
 
     // 8. 批量移动文件
     async moveFiles(cookie, fileIds, targetCid) {
-        const postData = qs.stringify({
-            pid: targetCid,
-            fid: fileIds
-        });
+        const params = { pid: targetCid };
+        if (Array.isArray(fileIds)) {
+            fileIds.forEach((id, i) => params[`fid[${i}]`] = id);
+        } else {
+            params['fid[0]'] = fileIds;
+        }
+        const postData = qs.stringify(params);
+
         try {
             const res = await axios.post("https://webapi.115.com/files/move", postData, {
                 headers: this._getHeaders(cookie)
