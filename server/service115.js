@@ -82,13 +82,13 @@ class Service115 {
     }
 
     // 4. 获取分享链接信息 (文件ID列表和标题)
-    async getShareInfo(cookie, shareCode, receiveCode) {
+    async getShareInfo(cookie, shareCode, receiveCode, cid = "") {
         try {
             const res = await axios.get("https://webapi.115.com/share/snap", {
                 headers: this._getHeaders(cookie),
                 httpsAgent: this.agent,
                 timeout: 10000,
-                params: { share_code: shareCode, receive_code: receiveCode, offset: 0, limit: 100, cid: "" }
+                params: { share_code: shareCode, receive_code: receiveCode, offset: 0, limit: 100, cid: cid }
             });
             
             if (!res.data.state) {
@@ -104,7 +104,8 @@ class Service115 {
                 success: true,
                 fileIds: fileIds,
                 shareTitle: res.data.data.share_title || (res.data.data.list[0] ? res.data.data.list[0].n : "未命名任务"),
-                count: res.data.data.count
+                count: res.data.data.count,
+                list: res.data.data.list // 返回原始列表以供类型判断
             };
         } catch (e) {
             throw new Error(e.message);
@@ -131,6 +132,44 @@ class Service115 {
             return { success: false, msg: res.data.error || res.data.msg || "转存被拒绝" };
         } catch (e) {
             return { success: false, msg: "转存API请求失败: " + e.message };
+        }
+    }
+
+    // 6. 批量删除文件 (移入回收站)
+    async deleteFiles(cookie, fileIds) {
+        if (!fileIds || fileIds.length === 0) return { success: true };
+        const postData = qs.stringify({
+            fid: fileIds
+        });
+        try {
+            const res = await axios.post("https://webapi.115.com/rb/delete", postData, {
+                headers: this._getHeaders(cookie),
+                httpsAgent: this.agent
+            });
+            if (res.data.state) return { success: true };
+            return { success: false, msg: res.data.error || "删除失败" };
+        } catch (e) {
+            return { success: false, msg: "删除API异常: " + e.message };
+        }
+    }
+
+    // 7. 获取最近上传/转存的文件（用于记录 ID 以便下次删除）
+    async getRecentItems(cookie, cid, limit = 10) {
+        if (limit <= 0) return { success: true, items: [] };
+        try {
+            const res = await axios.get("https://webapi.115.com/files", {
+                headers: this._getHeaders(cookie),
+                httpsAgent: this.agent,
+                params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: limit, type: 0, format: "json" }
+            });
+            if (res.data.state && res.data.data) {
+                // 提取 ID (文件用 fid, 文件夹用 cid)
+                const items = res.data.data.map(item => item.fid || item.cid);
+                return { success: true, items };
+            }
+            return { success: false, items: [] };
+        } catch (e) {
+            return { success: false, items: [] };
         }
     }
 }
