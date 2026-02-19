@@ -320,7 +320,7 @@ async function processTask(task, isCron = false) {
             const item = shareInfo.list[0];
             // 115 API 特征：文件夹有 cid 但通常没有 fid (在 snap 接口中)
             if (item.cid && !item.fid) {
-                console.log(`[Task] 检测到单文件夹 [${item.n}]，自动进入提取内容...`);
+                console.log(`[Task] 🔍 检测到单文件夹 [${item.n}]，正在穿透提取内容...`);
                 try {
                     const innerInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode, item.cid);
                     // 只有当内部有文件时才替换，防止空文件夹导致异常
@@ -363,7 +363,7 @@ async function processTask(task, isCron = false) {
         // --- 3. 执行转存 ---
         const saveResult = await service115.saveFiles(cookie, task.targetCid, task.shareCode, task.receiveCode, fileIds);
 
-        // --- 4. 成功后更新状态和日期 ---
+       // --- 4. 成功后更新状态和日期 ---
         if (saveResult.success) {
             const finalStatus = isCron ? 'scheduled' : 'success';
             // 【新增】成功后记录日期
