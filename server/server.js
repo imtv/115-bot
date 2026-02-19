@@ -123,6 +123,19 @@ app.get('/api/folders', async (req, res) => {
     }
 });
 
+// 11. 批量删除文件 (公开)
+app.post('/api/files/delete', async (req, res) => {
+    const { fileIds } = req.body;
+    if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
+    
+    try {
+        const result = await service115.deleteFiles(globalSettings.cookie, fileIds);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ success: false, msg: e.message });
+    }
+});
+
 // 5. 获取任务列表 (公开)
 app.get('/api/tasks', (req, res) => {
     // 隐藏敏感信息
