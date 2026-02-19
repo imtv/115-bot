@@ -40,12 +40,12 @@ class Service115 {
     }
 
     // 2. 获取文件夹列表
-    async getFolderList(cookie, cid = "0") {
+    async getFolderList(cookie, cid = "0", limit = 100) {
         try {
             const res = await axios.get("https://webapi.115.com/files", {
                 headers: this._getHeaders(cookie),
                 httpsAgent: this.agent,
-                params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: 100, type: 0, format: "json" }
+                params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: limit, type: 0, format: "json" }
             });
             if (res.data.state) {
                 return {
@@ -76,6 +76,20 @@ class Service115 {
                 // 115 API 创建文件夹返回的是 file_id，不是 cid
                 return { success: true, cid: res.data.data.file_id || res.data.data.cid, name: res.data.data.file_name };
             }
+            
+            // 【修复】如果提示"目录名称已存在"，则尝试查找并返回已存在的文件夹CID
+            if (res.data.error && res.data.error.includes("已存在")) {
+                // 获取父目录下较多的文件夹列表(1000个)，尝试找到同名的
+                const listRes = await this.getFolderList(cookie, parentCid, 1000);
+                if (listRes.success && listRes.list) {
+                    const existing = listRes.list.find(f => f.name === folderName);
+                    if (existing) {
+                        return { success: true, cid: existing.cid, name: existing.name, msg: "文件夹已存在，自动关联" };
+                    }
+                }
+                throw new Error("创建失败: 115提示目录已存在，但在该目录下未找到同名文件夹(可能是同名文件导致)，请检查");
+            }
+
             throw new Error(res.data.error || "创建文件夹失败");
         } catch (e) {
             throw new Error("创建文件夹API异常: " + e.message);
