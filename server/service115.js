@@ -73,7 +73,8 @@ class Service115 {
             });
             
             if (res.data.state) {
-                return { success: true, cid: res.data.data.cid, name: res.data.data.file_name };
+                // 115 API 创建文件夹返回的是 file_id，不是 cid
+                return { success: true, cid: res.data.data.file_id || res.data.data.cid, name: res.data.data.file_name };
             }
             throw new Error(res.data.error || "创建文件夹失败");
         } catch (e) {
