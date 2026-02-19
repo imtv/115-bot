@@ -244,7 +244,9 @@ app.post('/api/task', authenticate, async (req, res) => {
         // 自动在目标目录下创建一个以“任务名”命名的文件夹，并将文件存入其中。
         try {
             const folderRes = await service115.addFolder(cookie, finalTargetCid, finalTaskName);
-            if (folderRes.success) {
+            // 增加判断：确保 cid 存在才覆盖，防止 undefined 导致存入根目录
+            if (folderRes.success && folderRes.cid) {
+                console.log(`[Task] 自动创建文件夹成功: ${folderRes.name} (CID: ${folderRes.cid})`);
                 finalTargetCid = folderRes.cid; // 更新目标CID为新创建的文件夹
                 finalTargetName = folderRes.name;
             }
