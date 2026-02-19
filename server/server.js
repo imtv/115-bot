@@ -154,18 +154,6 @@ app.post('/api/task', async (req, res) => {
         let finalTargetCid = targetCid || globalSettings.rootCid || "0";
         let finalTargetName = targetName || globalSettings.rootName || "根目录";
 
-        // 自动创建文件夹
-        try {
-            const folderRes = await service115.addFolder(cookie, finalTargetCid, finalTaskName);
-            if (folderRes.success && folderRes.cid) {
-                console.log(`[Task] 自动创建文件夹成功: ${folderRes.name} (CID: ${folderRes.cid})`);
-                finalTargetCid = folderRes.cid; // 更新目标CID为新创建的文件夹
-                finalTargetName = folderRes.name;
-            }
-        } catch (e) {
-            console.warn(`[Task] 自动创建文件夹失败，将直接存入原目标目录: ${e.message}`);
-        }
-
         const newTask = {
             id: Date.now(),
             taskName: finalTaskName,
