@@ -154,6 +154,18 @@ app.post('/api/task', async (req, res) => {
         let finalTargetCid = targetCid || globalSettings.rootCid || "0";
         let finalTargetName = targetName || globalSettings.rootName || "根目录";
 
+        // 自动创建文件夹
+        try {
+            const folderRes = await service115.addFolder(cookie, finalTargetCid, finalTaskName);
+            if (folderRes.success && folderRes.cid) {
+                console.log(`[Task] 自动创建文件夹成功: ${folderRes.name} (CID: ${folderRes.cid})`);
+                finalTargetCid = folderRes.cid; // 更新目标CID为新创建的文件夹
+                finalTargetName = folderRes.name;
+            }
+        } catch (e) {
+            console.warn(`[Task] 自动创建文件夹失败，将直接存入原目标目录: ${e.message}`);
+        }
+
         const newTask = {
             id: Date.now(),
             taskName: finalTaskName,
@@ -270,19 +282,6 @@ app.put('/api/task/:id/run', requireAdmin, (req, res) => {
     }, 100); 
 
     res.json({ success: true, msg: "任务已启动" });
-});
-
-// 10. 创建文件夹 (公开，用于选择目录时新建)
-app.post('/api/folder', async (req, res) => {
-    const { parentCid, folderName } = req.body;
-    if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
-    
-    try {
-        const result = await service115.addFolder(globalSettings.cookie, parentCid, folderName);
-        res.json(result);
-    } catch (e) {
-        res.status(500).json({ success: false, msg: e.message });
-    }
 });
 
 // --- 内部功能函数 ---
