@@ -40,13 +40,21 @@ class Service115 {
         try {
             const res = await axios.get("https://webapi.115.com/files", {
                 headers: this._getHeaders(cookie),
-                params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: limit, type: 0, format: "json" }
+                params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: Math.max(limit, 1000), type: 0, format: "json" }
             });
             if (res.data.state) {
                 return {
                     success: true,
                     path: res.data.path,
-                    list: res.data.data.filter(item => item.cid).map(i => ({ cid: i.cid, name: i.n }))
+                    list: res.data.data.map(i => ({
+                        id: i.cid || i.fid,
+                        name: i.n,
+                        type: i.cid ? 'folder' : 'file',
+                        cid: i.cid,
+                        fid: i.fid,
+                        size: i.s,
+                        time: i.t
+                    }))
                 };
             }
             throw new Error(res.data.error || "获取目录失败");
