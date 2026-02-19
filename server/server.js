@@ -200,8 +200,8 @@ app.post('/api/task', async (req, res) => {
     }
 });
 
-// 7. 编辑任务 (需管理员)
-app.put('/api/task/:id', requireAdmin, async (req, res) => {
+// 7. 编辑任务 (公开)
+app.put('/api/task/:id', async (req, res) => {
     const taskId = parseInt(req.params.id);
     const { taskName, shareUrl, password, targetCid, targetName, cronExpression } = req.body;
     
@@ -252,8 +252,8 @@ app.put('/api/task/:id', requireAdmin, async (req, res) => {
     }
 });
 
-// 8. 删除任务 (需管理员)
-app.delete('/api/task/:id', requireAdmin, (req, res) => {
+// 8. 删除任务 (公开)
+app.delete('/api/task/:id', (req, res) => {
     const taskId = parseInt(req.params.id);
     
     if (cronJobs[taskId]) {
@@ -265,8 +265,8 @@ app.delete('/api/task/:id', requireAdmin, (req, res) => {
     res.json({ success: true });
 });
 
-// 9. 手动执行 (需管理员)
-app.put('/api/task/:id/run', requireAdmin, (req, res) => {
+// 9. 手动执行 (公开)
+app.put('/api/task/:id/run', (req, res) => {
     const taskId = parseInt(req.params.id);
     const task = globalTasks.find(t => t.id === taskId);
     
