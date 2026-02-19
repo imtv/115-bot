@@ -315,24 +315,6 @@ async function processTask(task, isCron = false) {
         // 注意：此处已移除自动创建文件夹的逻辑。转存将直接在 targetCid 下进行。
         let shareInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode);
         
-        // 【新增】智能穿透：如果分享链接里只有一个文件夹，则自动提取其内容
-        if (shareInfo.list && shareInfo.list.length === 1) {
-            const item = shareInfo.list[0];
-            // 115 API 特征：文件夹有 cid 但通常没有 fid (在 snap 接口中)
-            if (item.cid && !item.fid) {
-                console.log(`[Task] 🔍 检测到单文件夹 [${item.n}]，正在穿透提取内容...`);
-                try {
-                    const innerInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode, item.cid);
-                    // 只有当内部有文件时才替换，防止空文件夹导致异常
-                    if (innerInfo.fileIds.length > 0) {
-                        shareInfo = innerInfo;
-                    }
-                } catch (e) {
-                    console.warn(`[Task] 尝试进入文件夹失败，将按原样转存: ${e.message}`);
-                }
-            }
-        }
-
         const fileIds = shareInfo.fileIds;
         
         if (!fileIds || fileIds.length === 0) {
