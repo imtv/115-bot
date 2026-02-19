@@ -6,9 +6,11 @@ class Service115 {
     constructor() {
         // 移除 keepAlive agent，避免长时间运行后出现 socket hang up / 网络错误
         this.headers = {
+            "Host": "webapi.115.com",
+            "Connection": "keep-alive",
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-            "Referer": "https://115.com/",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36 MicroMessenger/6.8.0(0x16080000) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF XWEB/30626",
+            "Referer": "https://servicewechat.com/wx2c744c010a61b0fa/94/page-frame.html",
             "Accept-Encoding": "gzip, deflate, br",
             "Accept": "*/*"
         };
