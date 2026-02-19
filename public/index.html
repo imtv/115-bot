@@ -36,11 +36,6 @@
         .task-meta { font-size: 0.85rem; color: #6b7280; display: flex; gap: 10px; margin-bottom: 6px; }
         .task-log { font-size: 0.8rem; color: #4b5563; background: #e5e7eb; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;}
 
-        /* Cron Builder */
-        .cron-builder { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-        .cron-field { flex: 1; text-align: center; }
-        .cron-field label { font-size: 0.7rem; color: #666; display: block; margin-bottom: 4px; font-weight: 500; }
-        .cron-field input { text-align: center; padding: 8px 2px; font-family: monospace; margin-bottom: 0; }
         .cron-preview { font-family: monospace; background: #1f2937; color: #10b981; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.85rem; }
 
         /* Modal */
@@ -109,17 +104,11 @@
 
             <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
                 <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
-                    <span>⏱️ 定时计划 (Cron)</span>
+                    <span>⏱️ 每天定时检查 (小时)</span>
                     <span style="font-weight:400; font-size:0.8rem; color:#0284c7; cursor:pointer;" onclick="clearCron('create')">[ 重置/仅一次 ]</span>
                 </label>
                 <div style="margin-top: 10px;">
-                    <div class="cron-builder">
-                        <div class="cron-field"><label>分</label><input type="text" id="cron_m" placeholder="*" oninput="updateCronPreview('create')"></div>
-                        <div class="cron-field"><label>时</label><input type="text" id="cron_h" placeholder="*" oninput="updateCronPreview('create')"></div>
-                        <div class="cron-field"><label>日</label><input type="text" id="cron_dom" placeholder="*" oninput="updateCronPreview('create')"></div>
-                        <div class="cron-field"><label>月</label><input type="text" id="cron_mon" placeholder="*" oninput="updateCronPreview('create')"></div>
-                        <div class="cron-field"><label>周</label><input type="text" id="cron_dow" placeholder="*" oninput="updateCronPreview('create')"></div>
-                    </div>
+                    <input type="text" id="cron_hours" placeholder="例如: 8,20 (代表每天8点和20点)" oninput="updateCronPreview('create')">
                     <div class="cron-preview" id="cronResult">执行策略: 仅一次 (立即执行)</div>
                 </div>
             </div>
@@ -165,17 +154,11 @@
 
             <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
                 <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
-                    <span>⏱️ 定时计划 (Cron)</span>
+                    <span>⏱️ 每天定时检查 (小时)</span>
                     <span style="font-weight:400; font-size:0.8rem; color:#0284c7; cursor:pointer;" onclick="clearCron('edit')">[ 重置 ]</span>
                 </label>
                 <div style="margin-top: 10px;">
-                    <div class="cron-builder">
-                        <div class="cron-field"><label>分</label><input type="text" id="edit_cron_m" placeholder="*" oninput="updateCronPreview('edit')"></div>
-                        <div class="cron-field"><label>时</label><input type="text" id="edit_cron_h" placeholder="*" oninput="updateCronPreview('edit')"></div>
-                        <div class="cron-field"><label>日</label><input type="text" id="edit_cron_dom" placeholder="*" oninput="updateCronPreview('edit')"></div>
-                        <div class="cron-field"><label>月</label><input type="text" id="edit_cron_mon" placeholder="*" oninput="updateCronPreview('edit')"></div>
-                        <div class="cron-field"><label>周</label><input type="text" id="edit_cron_dow" placeholder="*" oninput="updateCronPreview('edit')"></div>
-                    </div>
+                    <input type="text" id="edit_cron_hours" placeholder="例如: 8,20 (代表每天8点和20点)" oninput="updateCronPreview('edit')">
                     <div class="cron-preview" id="editCronResult">执行策略: 未变更</div>
                 </div>
             </div>
@@ -300,27 +283,21 @@
     }
 
     // --- Cron 工具 ---
-    function getCronParts(prefix) {
-        return ['_m', '_h', '_dom', '_mon', '_dow'].map(s => document.getElementById(prefix + s).value.trim());
-    }
-    
     function updateCronPreview(mode) {
-        const prefix = mode === 'edit' ? 'edit_cron' : 'cron';
+        const inputId = mode === 'edit' ? 'edit_cron_hours' : 'cron_hours';
         const resultId = mode === 'edit' ? 'editCronResult' : 'cronResult';
         
-        const vals = getCronParts(prefix);
-        const hasValue = vals.some(v => v !== "");
+        const val = document.getElementById(inputId).value.trim();
         
-        if (!hasValue) {
+        if (!val) {
             document.getElementById(resultId).innerText = "执行策略: " + (mode === 'edit' ? "无 (停止定时)" : "仅一次 (立即执行)");
             document.getElementById(resultId).style.color = "#6b7280";
             return "";
         }
         
-        const finalParts = vals.map(v => v === "" ? "*" : v);
-        const cronStr = finalParts.join(" ");
-        let desc = `Cron: ${cronStr}`;
-        if(cronStr === "* * * * *") desc = "⚠️ 每分钟执行 (不推荐)";
+        // 构造 Cron: 0 {hours} * * *
+        const cronStr = `0 ${val} * * *`;
+        let desc = `Cron: ${cronStr} (每天 ${val} 点)`;
         
         document.getElementById(resultId).innerText = desc;
         document.getElementById(resultId).style.color = "#10b981";
@@ -328,8 +305,8 @@
     }
 
     function clearCron(mode) {
-        const prefix = mode === 'edit' ? 'edit_cron' : 'cron';
-        ['_m', '_h', '_dom', '_mon', '_dow'].forEach(s => document.getElementById(prefix + s).value = '');
+        const inputId = mode === 'edit' ? 'edit_cron_hours' : 'cron_hours';
+        document.getElementById(inputId).value = '';
         updateCronPreview(mode);
     }
 
@@ -418,10 +395,8 @@
         // 还原 Cron
         if (task.cronExpression) {
             const parts = task.cronExpression.split(' ');
-            if (parts.length === 5) {
-                ['m','h','dom','mon','dow'].forEach((k, i) => {
-                    document.getElementById(`edit_cron_${k}`).value = parts[i] === '*' ? '' : parts[i];
-                });
+            if (parts.length >= 2) {
+                document.getElementById('edit_cron_hours').value = parts[1];
             }
         } else {
             clearCron('edit');
