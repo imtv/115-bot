@@ -492,6 +492,13 @@ async function refreshOpenList(cid) {
     // 如果是其他接口格式，需根据实际情况调整
     try {
         let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
+        
+        // 【新增】Token 容错处理：去除空格，去除可能的 "Bearer " 前缀
+        let token = (globalSettings.olToken || "").trim();
+        if (token.toLowerCase().startsWith("bearer ")) {
+            token = token.substring(7).trim();
+        }
+
         let strategies = [];
 
         // 如果用户填写的地址包含 /api/，则只尝试用户填写的
@@ -523,7 +530,7 @@ async function refreshOpenList(cid) {
                 console.log(`[OpenList] 尝试请求: ${strategy.url}`);
                 const res = await axios.post(strategy.url, strategy.body, {
                     headers: {
-                        "Authorization": globalSettings.olToken ? `imtv ${globalSettings.olToken}` : "",
+                        "Authorization": token,
                         "Content-Type": "application/json"
                     },
                     timeout: 10000 // 增加超时时间，因为刷新可能较慢
@@ -538,7 +545,9 @@ async function refreshOpenList(cid) {
                 
                 // 检查业务状态码 (AList通常返回 code: 200)
                 if (res.data.code !== undefined && res.data.code !== 200) {
-                     throw new Error(`API业务错误: ${res.data.message || '未知'} (Code: ${res.data.code})`);
+                     let msg = `API业务错误: ${res.data.message || '未知'} (Code: ${res.data.code})`;
+                     if (res.data.code === 401) msg += " [请检查后台设置的Token是否正确]";
+                     throw new Error(msg);
                 }
 
                 console.log(`[OpenList] 成功! 使用接口: ${strategy.url}`);
