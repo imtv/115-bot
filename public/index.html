@@ -132,7 +132,10 @@
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <h3 style="margin:0;">📋 任务队列</h3>
-                <button onclick="loadTasks()" class="btn-outline" style="width:auto; padding:5px 12px;">刷新</button>
+                <div style="display:flex; gap:5px;">
+                    <button onclick="scanBaidu()" class="btn-refresh" style="width:auto; padding:5px 12px;">扫描百度网盘</button>
+                    <button onclick="loadTasks()" class="btn-outline" style="width:auto; padding:5px 12px;">刷新</button>
+                </div>
             </div>
             <div id="taskList"></div>
         </div>
@@ -390,6 +393,17 @@
             } else {
                 alert("❌ 启动失败: " + res.msg);
             }
+        }
+    }
+
+    // 【新增】扫描百度网盘
+    async function scanBaidu() {
+        if(!confirm('确定要扫描 OpenList 的 /百度网盘 路径吗？')) return;
+        const res = await request('/scan/path', 'POST', { path: '/百度网盘' });
+        if(res.success) {
+            alert('✅ 扫描请求已发送');
+        } else {
+            alert("❌ 失败: " + res.msg);
         }
     }
 
