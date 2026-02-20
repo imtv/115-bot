@@ -76,11 +76,7 @@
             <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
                 <label style="font-size:0.8rem;">OpenList 集成 (手动扫描)</label>
                 <input type="text" id="olUrl" placeholder="OpenList 地址 (如 http://192.168.1.5:5244)">
-                <div style="font-size:0.75rem; color:#666; margin-bottom:5px;">认证方式 (账号密码):</div>
-                <div class="row">
-                    <input type="text" id="olUsername" placeholder="OpenList 用户名">
-                    <input type="password" id="olPassword" placeholder="OpenList 密码">
-                </div>
+                <input type="text" id="olToken" placeholder="API Token (后台-设置-其他-令牌)">
                 <div class="row">
                     <div style="flex:1">
                         <label style="font-size:0.7rem; color:#666;">OpenList 挂载路径 (对应上方根目录)</label>
@@ -207,7 +203,6 @@
                 <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem; flex:1;">
                 <button onclick="createNewFolder()" class="btn-outline" style="width:auto; padding:8px 12px;">➕ 新建</button>
                 <div style="width: 1px; height: 24px; background: #eee;"></div>
-                <button id="moveBtn" onclick="startMove()" class="btn-edit" style="width:auto; padding:8px 12px;">🚚 移动选中</button>
                 <button onclick="deleteSelected()" class="btn-danger" style="width:auto; padding:8px 12px;">🗑️ 删除选中</button>
             </div>
 
@@ -216,8 +211,7 @@
             
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <span style="font-size: 0.8rem; color: #666; align-self: center;" id="selectionCount"></span>
-                <span id="moveStatus" style="font-size: 0.8rem; color: #f59e0b; align-self: center; display: none; font-weight: bold;">请进入目标文件夹...</span>
-                <button id="confirmBtn" onclick="confirmFolder()" style="width: auto;">✅ 选择当前目录</button>
+                <button onclick="confirmFolder()" style="width: auto;">✅ 选择当前目录</button>
             </div>
         </div>
     </div>
@@ -243,8 +237,6 @@
     let isSettingRoot = false; // 标记是否正在设置全局根目录
     let allTasks = [];      // 缓存任务列表用于编辑回显
     let selectedFiles = new Set(); // 选中的文件ID集合
-    let filesToMove = [];   // 待移动的文件ID列表
-    let isMovingMode = false; // 是否处于移动模式
 
     // 初始化
     (function init() {
@@ -314,8 +306,7 @@
             document.getElementById('setAdminUser').value = res.data.adminUser || 'admin';
             document.getElementById('setAdminPass').value = res.data.adminPass || 'admin';
             document.getElementById('olUrl').value = res.data.olUrl || '';
-            document.getElementById('olUsername').value = res.data.olUsername || '';
-            document.getElementById('olPassword').value = res.data.olPassword || '';
+            document.getElementById('olToken').value = res.data.olToken || '';
             document.getElementById('olMountPrefix').value = res.data.olMountPrefix || '';
         }
     }
@@ -328,11 +319,10 @@
         const adminPass = document.getElementById('setAdminPass').value;
         
         const olUrl = document.getElementById('olUrl').value;
-        const olUsername = document.getElementById('olUsername').value;
-        const olPassword = document.getElementById('olPassword').value;
+        const olToken = document.getElementById('olToken').value;
         const olMountPrefix = document.getElementById('olMountPrefix').value;
         
-        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olUsername, olPassword, olMountPrefix });
+        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olMountPrefix });
         if(res.success) alert("设置已保存"); else alert(res.msg);
     }
 
@@ -573,37 +563,6 @@
         }
     }
 
-    function startMove() {
-        if (isMovingMode) {
-            // 取消移动模式
-            isMovingMode = false;
-            filesToMove = [];
-            document.getElementById('moveBtn').innerText = '🚚 移动选中';
-            document.getElementById('confirmBtn').innerText = '✅ 选择当前目录';
-            document.getElementById('moveStatus').style.display = 'none';
-            document.getElementById('moveBtn').classList.remove('btn-danger');
-            document.getElementById('moveBtn').classList.add('btn-edit');
-            return;
-        }
-
-        if(selectedFiles.size === 0) return alert("请先选择要移动的文件/文件夹");
-        
-        filesToMove = Array.from(selectedFiles);
-        isMovingMode = true;
-        
-        // 更新 UI 进入移动模式
-        document.getElementById('moveBtn').innerText = '❌ 取消移动';
-        document.getElementById('moveBtn').classList.remove('btn-edit');
-        document.getElementById('moveBtn').classList.add('btn-danger');
-        document.getElementById('confirmBtn').innerText = '📂 移动到此';
-        document.getElementById('moveStatus').innerText = `已选 ${filesToMove.length} 项，请进入目标文件夹后点击右侧按钮 👉`;
-        document.getElementById('moveStatus').style.display = 'inline';
-        
-        // 清空当前选择（视觉上），因为我们要去别的目录了
-        selectedFiles.clear();
-        updateSelectionUI();
-    }
-
     async function createNewFolder() {
         const name = document.getElementById('newFolderName').value;
         if(!name) return alert("请输入文件夹名称");
@@ -619,22 +578,6 @@
     }
 
     function confirmFolder() {
-        // 处理移动逻辑
-        if (isMovingMode) {
-            if(!confirm(`确定将 ${filesToMove.length} 项移动到当前目录 [${curPathName}] 吗？`)) return;
-            
-            request('/files/move', 'POST', { fileIds: filesToMove, targetCid: curCid }).then(res => {
-                if(res.success) {
-                    alert('移动成功');
-                    startMove(); // 退出移动模式
-                    loadFolders(curCid); // 刷新当前目录
-                } else {
-                    alert("移动失败: " + res.msg);
-                }
-            });
-            return;
-        }
-
         if (isEditMode) {
             document.getElementById('editTargetPath').value = curPathName;
             document.getElementById('editTargetCid').value = curCid;
