@@ -216,6 +216,20 @@
         </div>
     </div>
 
+    <!-- Result Modal (用于显示可复制的详情) -->
+    <div id="resultModal" class="modal">
+        <div class="modal-content" style="width: 600px; max-height: 80vh;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <strong>📜 索引结果详情</strong>
+                <span onclick="document.getElementById('resultModal').style.display='none'" style="cursor:pointer; font-size:1.5rem;">&times;</span>
+            </div>
+            <textarea id="resultText" style="width:100%; height:300px; font-family:monospace; font-size:0.85rem; padding:10px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; color:#374151; resize:vertical;" readonly></textarea>
+            <div style="text-align:right; margin-top:10px;">
+                <button onclick="document.getElementById('resultModal').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+
 <script>
     let adminToken = localStorage.getItem('adminToken');
     let curCid = "0", curPathName = "根目录";
@@ -384,9 +398,13 @@
     async function refreshIndex(id) {
         if(!confirm('确定要通知 OpenList 索引该任务的路径吗？')) return;
         const res = await request(`/task/${id}/refresh-index`, 'POST');
-        if(res.success) {
-            alert(`✅ 索引请求已发送\nOpenList响应: ${JSON.stringify(res.data)}`);
-        } else alert("❌ 失败: " + res.msg);
+        
+        const resultText = res.success 
+            ? `✅ 索引请求已发送\n\nOpenList响应:\n${JSON.stringify(res.data, null, 2)}`
+            : `❌ 失败: ${res.msg}`;
+            
+        document.getElementById('resultText').value = resultText;
+        document.getElementById('resultModal').style.display = 'flex';
     }
 
     async function loadTasks() {
