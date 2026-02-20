@@ -32,7 +32,12 @@ if (!fs.existsSync(DATA_ROOT)) {
 // --- 全局缓存 ---
 let globalSettings = { 
     cookie: "", rootCid: "0", rootName: "根目录", 
-    adminUser: "admin", adminPass: "admin"
+    adminUser: "admin", adminPass: "admin",
+    olUrl: "", // OpenList 地址
+    olToken: "", // OpenList 密码/Token
+    olUsername: "", // OpenList 登录名
+    olPassword: "", // OpenList 登录密码
+    olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
 };
 let globalTasks = [];
 let cronJobs = {};
@@ -91,7 +96,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, rootCid, rootName, adminUser, adminPass } = req.body;
+    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olUsername, olPassword, olMountPrefix } = req.body;
     
     if (cookie) {
         try {
@@ -107,6 +112,11 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (rootName !== undefined) globalSettings.rootName = rootName;
     if (adminUser) globalSettings.adminUser = adminUser;
     if (adminPass) globalSettings.adminPass = adminPass;
+    if (olUrl !== undefined) globalSettings.olUrl = olUrl;
+    if (olToken !== undefined) globalSettings.olToken = olToken;
+    if (olUsername !== undefined) globalSettings.olUsername = olUsername;
+    if (olPassword !== undefined) globalSettings.olPassword = olPassword;
+    if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
     
     saveSettings();
     res.json({ success: true, msg: "设置已保存", data: globalSettings });
@@ -302,6 +312,20 @@ app.put('/api/task/:id/run', (req, res) => {
     res.json({ success: true, msg: "任务已启动" });
 });
 
+// 13. 手动触发 OpenList 扫描 (公开)
+app.post('/api/task/:id/refresh-index', async (req, res) => {
+    const taskId = parseInt(req.params.id);
+    const task = globalTasks.find(t => t.id === taskId);
+    if (!task) return res.status(404).json({ success: false, msg: "任务不存在" });
+
+    try {
+        const result = await refreshOpenList(task.targetCid);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ success: false, msg: e.message });
+    }
+});
+
 // --- 内部功能函数 ---
 
 function startCronJob(task) {
@@ -388,7 +412,7 @@ async function processTask(task, isCron = false) {
                 task.lastSavedFileIds = recent.items;
             }
 
-            const logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
+            let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
             
             updateTaskStatus(task, finalStatus, logMsg);
 
@@ -402,7 +426,7 @@ async function processTask(task, isCron = false) {
                 task.lastSuccessDate = todayStr;
                 task.lastSavedFileIds = checkFiles.items;
                 
-                const logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
+                let logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
                 
                 updateTaskStatus(task, isCron ? 'scheduled' : 'success', logMsg);
 
@@ -419,6 +443,93 @@ async function processTask(task, isCron = false) {
     } catch (e) {
         const finalStatus = isCron ? 'scheduled' : 'error';
         updateTaskStatus(task, finalStatus, `错误: ${e.message}`);
+    }
+}
+
+// 【恢复】获取 OpenList Token
+let tempOlToken = "";
+let tempOlTokenTime = 0;
+
+async function getOpenListToken() {
+    if (globalSettings.olToken && globalSettings.olToken.trim() !== "") {
+        return globalSettings.olToken.trim();
+    }
+    if (globalSettings.olUsername && globalSettings.olPassword) {
+        if (tempOlToken && (Date.now() - tempOlTokenTime < 23 * 3600 * 1000)) {
+            return tempOlToken;
+        }
+        try {
+            console.log("[OpenList] 正在使用账号密码登录...");
+            let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
+            const res = await axios.post(baseUrl + "/api/auth/login", {
+                username: globalSettings.olUsername,
+                password: globalSettings.olPassword
+            });
+            if (res.data.code === 200 && res.data.data && res.data.data.token) {
+                tempOlToken = res.data.data.token;
+                tempOlTokenTime = Date.now();
+                return tempOlToken;
+            } else {
+                throw new Error(res.data.message || "登录失败");
+            }
+        } catch (e) {
+            throw new Error("OpenList登录失败: " + e.message);
+        }
+    }
+    throw new Error("未配置 OpenList Token 或 账号密码");
+}
+
+// 【恢复】OpenList 扫描逻辑 (使用 /api/admin/index/update)
+async function refreshOpenList(cid) {
+    if (!globalSettings.olUrl) return { success: false, msg: "未配置 OpenList" };
+
+    // 1. 获取 115 完整路径
+    const pathRes = await service115.getPath(globalSettings.cookie, cid);
+    if (!pathRes.success) throw new Error("无法获取115文件夹路径");
+
+    let fullPath115 = "/" + pathRes.path.map(p => p.name).join("/");
+    
+    // 2. 获取根目录路径
+    let rootPath115 = "";
+    if (globalSettings.rootCid !== "0") {
+        const rootPathRes = await service115.getPath(globalSettings.cookie, globalSettings.rootCid);
+        if (rootPathRes.success) {
+            rootPath115 = "/" + rootPathRes.path.map(p => p.name).join("/");
+        }
+    }
+
+    // 3. 路径映射
+    let finalPath = fullPath115;
+    if (globalSettings.olMountPrefix && fullPath115.startsWith(rootPath115)) {
+        finalPath = fullPath115.replace(rootPath115, globalSettings.olMountPrefix);
+    }
+
+    console.log(`[OpenList] 准备扫描路径: ${finalPath}`);
+
+    try {
+        let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
+        let token = await getOpenListToken();
+
+        // 使用手动扫描对应的接口
+        const url = baseUrl + "/api/admin/index/update";
+        
+        const res = await axios.post(url, {
+            paths: [finalPath] // 注意这里是数组
+        }, {
+            headers: {
+                "Authorization": token, // 不带 Bearer
+                "Content-Type": "application/json"
+            },
+            timeout: 10000
+        });
+
+        if (res.data.code !== 200) {
+             throw new Error(`API错误: ${res.data.message} (Code: ${res.data.code})`);
+        }
+
+        return { success: true, msg: "扫描请求已发送", data: res.data };
+    } catch (e) {
+        throw new Error(`OpenList请求失败: ${e.message}`);
     }
 }
 
