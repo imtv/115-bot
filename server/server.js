@@ -530,7 +530,7 @@ async function refreshOpenList(cid) {
                 console.log(`[OpenList] 尝试请求: ${strategy.url}`);
                 const res = await axios.post(strategy.url, strategy.body, {
                     headers: {
-                        "Authorization": token,
+                        "Authorization": `Bearer ${token}`,
                         "Content-Type": "application/json"
                     },
                     timeout: 10000 // 增加超时时间，因为刷新可能较慢
