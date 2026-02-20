@@ -312,14 +312,14 @@ app.put('/api/task/:id/run', (req, res) => {
     res.json({ success: true, msg: "任务已启动" });
 });
 
-// 13. 手动触发 OpenList 扫描 (公开)
+// 13. 获取 OpenList 扫描路径 (公开)
 app.post('/api/task/:id/refresh-index', async (req, res) => {
     const taskId = parseInt(req.params.id);
     const task = globalTasks.find(t => t.id === taskId);
     if (!task) return res.status(404).json({ success: false, msg: "任务不存在" });
 
     try {
-        const result = await refreshOpenList(task.targetCid);
+        const result = await getOpenListPath(task.targetCid);
         res.json(result);
     } catch (e) {
         res.status(500).json({ success: false, msg: e.message });
@@ -412,7 +412,7 @@ async function processTask(task, isCron = false) {
                 task.lastSavedFileIds = recent.items;
             }
 
-            let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
+            const logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
             
             updateTaskStatus(task, finalStatus, logMsg);
 
@@ -426,7 +426,7 @@ async function processTask(task, isCron = false) {
                 task.lastSuccessDate = todayStr;
                 task.lastSavedFileIds = checkFiles.items;
                 
-                let logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
+                const logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
                 
                 updateTaskStatus(task, isCron ? 'scheduled' : 'success', logMsg);
 
@@ -446,41 +446,8 @@ async function processTask(task, isCron = false) {
     }
 }
 
-// 【恢复】获取 OpenList Token
-let tempOlToken = "";
-let tempOlTokenTime = 0;
-
-async function getOpenListToken() {
-    if (globalSettings.olToken && globalSettings.olToken.trim() !== "") {
-        return globalSettings.olToken.trim();
-    }
-    if (globalSettings.olUsername && globalSettings.olPassword) {
-        if (tempOlToken && (Date.now() - tempOlTokenTime < 23 * 3600 * 1000)) {
-            return tempOlToken;
-        }
-        try {
-            console.log("[OpenList] 正在使用账号密码登录...");
-            let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
-            const res = await axios.post(baseUrl + "/api/auth/login", {
-                username: globalSettings.olUsername,
-                password: globalSettings.olPassword
-            });
-            if (res.data.code === 200 && res.data.data && res.data.data.token) {
-                tempOlToken = res.data.data.token;
-                tempOlTokenTime = Date.now();
-                return tempOlToken;
-            } else {
-                throw new Error(res.data.message || "登录失败");
-            }
-        } catch (e) {
-            throw new Error("OpenList登录失败: " + e.message);
-        }
-    }
-    throw new Error("未配置 OpenList Token 或 账号密码");
-}
-
-// 【恢复】OpenList 扫描逻辑 (使用 /api/admin/index/update)
-async function refreshOpenList(cid) {
+// 【修改】只计算 OpenList 路径，不调用 API
+async function getOpenListPath(cid) {
     if (!globalSettings.olUrl) return { success: false, msg: "未配置 OpenList" };
 
     // 1. 获取 115 完整路径
@@ -504,33 +471,12 @@ async function refreshOpenList(cid) {
         finalPath = fullPath115.replace(rootPath115, globalSettings.olMountPrefix);
     }
 
-    console.log(`[OpenList] 准备扫描路径: ${finalPath}`);
-
-    try {
-        let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
-        let token = await getOpenListToken();
-
-        // 使用手动扫描对应的接口
-        const url = baseUrl + "/api/admin/index/update";
-        
-        const res = await axios.post(url, {
-            paths: [finalPath] // 注意这里是数组
-        }, {
-            headers: {
-                "Authorization": token, // 不带 Bearer
-                "Content-Type": "application/json"
-            },
-            timeout: 10000
-        });
-
-        if (res.data.code !== 200) {
-             throw new Error(`API错误: ${res.data.message} (Code: ${res.data.code})`);
-        }
-
-        return { success: true, msg: "扫描请求已发送", data: res.data };
-    } catch (e) {
-        throw new Error(`OpenList请求失败: ${e.message}`);
-    }
+    // 返回计算出的路径和 OpenList 管理页面地址
+    return { 
+        success: true, 
+        path: finalPath,
+        url: globalSettings.olUrl.replace(/\/$/, "") + "/@manage/indexes"
+    };
 }
 
 function updateTaskStatus(task, status, log) {
