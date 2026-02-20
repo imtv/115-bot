@@ -496,10 +496,17 @@ async function refreshOpenList(cid) {
 
         // 如果用户填写的地址包含 /api/，则只尝试用户填写的
         if (baseUrl.includes('/api/')) {
-            strategies.push({ url: baseUrl, body: { path: finalPath } });
+            // 简单适配 update 接口参数
+            if (baseUrl.endsWith('/index/update')) {
+                strategies.push({ url: baseUrl, body: { paths: [finalPath] } });
+            } else {
+                strategies.push({ url: baseUrl, body: { path: finalPath } });
+            }
         } else {
             // 自动尝试多种常见接口
             strategies = [
+                // 0. 用户指定的新接口 (OpenList) - 优先级最高
+                { url: baseUrl + "/api/admin/index/update", body: { paths: [finalPath] } },
                 // 1. 标准管理接口 (AList v3 / OpenList)
                 { url: baseUrl + "/api/admin/refresh", body: { path: finalPath } },
                 // 2. 兼容接口 (旧版)
