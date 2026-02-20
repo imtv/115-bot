@@ -547,6 +547,14 @@ async function refreshOpenList(cid) {
                 if (res.data.code !== undefined && res.data.code !== 200) {
                      let msg = `API业务错误: ${res.data.message || '未知'} (Code: ${res.data.code})`;
                      if (res.data.code === 401) msg += " [请检查后台设置的Token是否正确]";
+                     
+                     // 【新增】OpenList 特有错误：搜索未开启
+                     // 如果遇到这个错误，说明找对了接口但功能没开，应立即停止重试并报错
+                     if (res.data.code === 404 && res.data.message && res.data.message.includes("search not available")) {
+                         msg += " [请在 OpenList 后台开启搜索索引功能]";
+                         throw new Error("CRITICAL_OPENLIST_ERROR: " + msg);
+                     }
+
                      throw new Error(msg);
                 }
 
@@ -554,6 +562,9 @@ async function refreshOpenList(cid) {
                 return { success: true, msg: "索引请求已发送", data: res.data };
             } catch (e) {
                 console.warn(`[OpenList] 请求 ${strategy.url} 失败: ${e.message}`);
+                if (e.message.startsWith("CRITICAL_OPENLIST_ERROR:")) {
+                    throw new Error(e.message.replace("CRITICAL_OPENLIST_ERROR: ", ""));
+                }
                 lastError = e;
             }
         }
