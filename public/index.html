@@ -81,7 +81,6 @@
                     <input type="text" id="olUsername" placeholder="OpenList 用户名">
                     <input type="password" id="olPassword" placeholder="OpenList 密码">
                 </div>
-                <input type="text" id="olToken" placeholder="或者: 静态 API Token (可选)">
                 <div class="row">
                     <div style="flex:1">
                         <label style="font-size:0.7rem; color:#666;">OpenList 挂载路径 (对应上方根目录)</label>
@@ -315,7 +314,6 @@
             document.getElementById('setAdminUser').value = res.data.adminUser || 'admin';
             document.getElementById('setAdminPass').value = res.data.adminPass || 'admin';
             document.getElementById('olUrl').value = res.data.olUrl || '';
-            document.getElementById('olToken').value = res.data.olToken || '';
             document.getElementById('olUsername').value = res.data.olUsername || '';
             document.getElementById('olPassword').value = res.data.olPassword || '';
             document.getElementById('olMountPrefix').value = res.data.olMountPrefix || '';
@@ -330,12 +328,11 @@
         const adminPass = document.getElementById('setAdminPass').value;
         
         const olUrl = document.getElementById('olUrl').value;
-        const olToken = document.getElementById('olToken').value;
         const olUsername = document.getElementById('olUsername').value;
         const olPassword = document.getElementById('olPassword').value;
         const olMountPrefix = document.getElementById('olMountPrefix').value;
         
-        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olUsername, olPassword, olMountPrefix });
+        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olUsername, olPassword, olMountPrefix });
         if(res.success) alert("设置已保存"); else alert(res.msg);
     }
 
@@ -408,16 +405,20 @@
 
     // 【修改】获取路径并跳转
     async function refreshIndex(id) {
-        const res = await request(`/task/${id}/refresh-index`, 'POST');
-        
-        if(res.success) {
-            // 复制到剪贴板
-            navigator.clipboard.writeText(res.path).then(() => {
-                alert(`✅ 路径已复制:\n${res.path}\n\n即将打开 OpenList 扫描页面，请粘贴路径并点击“开始”`);
-                window.open(res.url, '_blank');
-            });
-        } else {
-            alert("❌ 获取路径失败: " + res.msg);
+        try {
+            const res = await request(`/task/${id}/refresh-index`, 'POST');
+            
+            if(res.success) {
+                // 复制到剪贴板
+                navigator.clipboard.writeText(res.path).then(() => {
+                    alert(`✅ 路径已复制:\n${res.path}\n\n即将打开 OpenList 扫描页面，请粘贴路径并点击“开始”`);
+                    window.open(res.url, '_blank');
+                });
+            } else {
+                alert("❌ 获取路径失败: " + res.msg);
+            }
+        } catch (e) {
+            alert("❌ 请求异常: " + e.message);
         }
     }
 
