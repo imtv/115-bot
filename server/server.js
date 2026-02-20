@@ -34,8 +34,7 @@ let globalSettings = {
     cookie: "", rootCid: "0", rootName: "根目录", 
     adminUser: "admin", adminPass: "admin",
     olUrl: "", // OpenList 地址
-    olUsername: "", // OpenList 登录名
-    olPassword: "", // OpenList 登录密码
+    olToken: "", // OpenList Token
     olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
 };
 let globalTasks = [];
@@ -95,7 +94,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olUsername, olPassword, olMountPrefix } = req.body;
+    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olMountPrefix } = req.body;
     
     if (cookie) {
         try {
@@ -112,8 +111,7 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (adminUser) globalSettings.adminUser = adminUser;
     if (adminPass) globalSettings.adminPass = adminPass;
     if (olUrl !== undefined) globalSettings.olUrl = olUrl;
-    if (olUsername !== undefined) globalSettings.olUsername = olUsername;
-    if (olPassword !== undefined) globalSettings.olPassword = olPassword;
+    if (olToken !== undefined) globalSettings.olToken = olToken;
     if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
     
     saveSettings();
@@ -459,40 +457,12 @@ async function processTask(task, isCron = false) {
     }
 }
 
-// 【新增】获取 OpenList Token (使用账号密码登录)
-let tempOlToken = "";
-let tempOlTokenTime = 0;
-
+// 【修改】直接获取配置的 Token
 async function getOpenListToken() {
-    if (globalSettings.olUsername && globalSettings.olPassword) {
-        // 检查缓存 (有效期 23小时)
-        if (tempOlToken && (Date.now() - tempOlTokenTime < 23 * 3600 * 1000)) {
-            return tempOlToken;
-        }
-
-        try {
-            console.log("[OpenList] 正在使用账号密码登录...");
-            let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
-            // 尝试登录接口
-            const res = await axios.post(baseUrl + "/api/auth/login", {
-                username: globalSettings.olUsername,
-                password: globalSettings.olPassword
-            });
-
-            if (res.data.code === 200 && res.data.data && res.data.data.token) {
-                tempOlToken = res.data.data.token;
-                tempOlTokenTime = Date.now();
-                console.log("[OpenList] 登录成功，Token已更新");
-                return tempOlToken;
-            } else {
-                throw new Error(res.data.message || "登录失败");
-            }
-        } catch (e) {
-            throw new Error("OpenList登录失败: " + e.message);
-        }
+    if (globalSettings.olToken && globalSettings.olToken.trim() !== "") {
+        return globalSettings.olToken.trim();
     }
-
-    throw new Error("未配置 OpenList 账号密码");
+    throw new Error("未配置 OpenList Token");
 }
 
 // 【恢复】OpenList 扫描逻辑 (调用 /api/admin/index/update)
@@ -526,11 +496,12 @@ async function refreshOpenList(cid) {
         let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
         let token = await getOpenListToken();
 
-        // 使用手动扫描对应的接口
-        const url = baseUrl + "/api/admin/index/update";
+        // 【修正】使用抓包确认的“手动扫描”接口
+        const url = baseUrl + "/api/admin/scan/start";
         
         const res = await axios.post(url, {
-            paths: [finalPath] // 注意这里是数组
+            path: finalPath, // 抓包确认为 path 且不是数组
+            limit: 0         // 抓包确认为 0
         }, {
             headers: {
                 "Authorization": token, // 不带 Bearer
