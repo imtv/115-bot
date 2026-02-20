@@ -22,6 +22,7 @@
         .btn-danger { background: #ef4444; color: white; border: none; }
         .btn-edit { background: #3b82f6; color: white; border: none; }
         .btn-run { background: #10b981; color: white; border: none; } /* 新增运行按钮样式 */
+        .btn-refresh { background: #8b5cf6; color: white; border: none; } /* 索引按钮样式 */
         
         /* Task List */
         .task-item { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #ccc; }
@@ -70,6 +71,21 @@
                     <input type="text" id="rootPathName" readonly style="background:#eee;">
                     <input type="hidden" id="rootCid">
                     <button onclick="openFolderPicker(false, true)" class="btn-outline" style="width:80px;">选择</button>
+                </div>
+            </div>
+            <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+                <label style="font-size:0.8rem;">OpenList 索引集成</label>
+                <input type="text" id="olUrl" placeholder="OpenList 地址 (例如 http://192.168.1.5:3000)">
+                <input type="text" id="olToken" placeholder="Token / 密码 (可选)">
+                <div class="row">
+                    <div style="flex:1">
+                        <label style="font-size:0.7rem; color:#666;">115侧路径前缀 (被替换)</label>
+                        <input type="text" id="ol115Prefix" placeholder="例如 /videos-115">
+                    </div>
+                    <div style="flex:1">
+                        <label style="font-size:0.7rem; color:#666;">OpenList侧挂载前缀 (替换为)</label>
+                        <input type="text" id="olMountPrefix" placeholder="例如 /115网盘">
+                    </div>
                 </div>
             </div>
             <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
@@ -283,6 +299,10 @@
             document.getElementById('rootPathName').value = res.data.rootName || '根目录';
             document.getElementById('setAdminUser').value = res.data.adminUser || 'admin';
             document.getElementById('setAdminPass').value = res.data.adminPass || 'admin';
+            document.getElementById('olUrl').value = res.data.olUrl || '';
+            document.getElementById('olToken').value = res.data.olToken || '';
+            document.getElementById('ol115Prefix').value = res.data.ol115Prefix || '';
+            document.getElementById('olMountPrefix').value = res.data.olMountPrefix || '';
         }
     }
 
@@ -293,7 +313,12 @@
         const adminUser = document.getElementById('setAdminUser').value;
         const adminPass = document.getElementById('setAdminPass').value;
         
-        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass });
+        const olUrl = document.getElementById('olUrl').value;
+        const olToken = document.getElementById('olToken').value;
+        const ol115Prefix = document.getElementById('ol115Prefix').value;
+        const olMountPrefix = document.getElementById('olMountPrefix').value;
+        
+        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, ol115Prefix, olMountPrefix });
         if(res.success) alert("设置已保存"); else alert(res.msg);
     }
 
@@ -364,6 +389,15 @@
         }
     }
 
+    // 【新增】手动触发索引
+    async function refreshIndex(id) {
+        if(!confirm('确定要通知 OpenList 索引该任务的路径吗？')) return;
+        const res = await request(`/task/${id}/refresh-index`, 'POST');
+        if(res.success) {
+            alert(`✅ 索引请求已发送\nOpenList响应: ${JSON.stringify(res.data)}`);
+        } else alert("❌ 失败: " + res.msg);
+    }
+
     async function loadTasks() {
         const tasks = await request('/tasks');
         allTasks = tasks; // 缓存
@@ -380,6 +414,7 @@
                     </div>
                     <div style="display:flex; gap:5px;">
                         ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
+                        <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList索引此路径">索引</button>
                         <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
                         <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
                     </div>
