@@ -495,7 +495,7 @@ async function refreshOpenList(cid) {
         let apiUrl = globalSettings.olUrl.replace(/\/$/, "");
         // 如果用户填写的地址没有包含 /api/，则自动追加默认路径
         if (!apiUrl.includes('/api/')) {
-            apiUrl += "/api/refresh"; // 回退到更通用的 /api/refresh，或者由用户在设置里填全路径
+            apiUrl += "/api/admin/refresh"; // 回退到更通用的 /api/admin/refresh
         }
         
         // 构造请求
