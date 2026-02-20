@@ -455,6 +455,9 @@ async function processTask(task, isCron = false) {
 
             let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${countDesc}`;
             
+            // 【新增】等待 1 秒，确保文件系统就绪后再扫描
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
             // 【恢复】转存成功后，自动触发 OpenList 扫描
             try {
                 const olRes = await refreshOpenList(task.targetCid);
@@ -487,7 +490,6 @@ async function processTask(task, isCron = false) {
                 updateTaskStatus(task, isCron ? 'scheduled' : 'success', logMsg);
 
             } else {
-                // 目标文件夹是空的，说明文件在别的地方（比如根目录）
                 const finalStatus = isCron ? 'scheduled' : 'failed';
                 updateTaskStatus(task, finalStatus, `[${formatTime()}] ⚠️ 失败: 文件已存在于网盘其他位置(请检查根目录)，无法存入新文件夹`);
             }
