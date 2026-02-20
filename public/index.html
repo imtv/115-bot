@@ -409,11 +409,32 @@
             const res = await request(`/task/${id}/refresh-index`, 'POST');
             
             if(res.success) {
-                // 复制到剪贴板
-                navigator.clipboard.writeText(res.path).then(() => {
-                    alert(`✅ 路径已复制:\n${res.path}\n\n即将打开 OpenList 扫描页面，请粘贴路径并点击“开始”`);
-                    window.open(res.url, '_blank');
-                });
+                let msg = `📋 扫描信息确认:\n\n`;
+                msg += `🔗 OpenList 管理页: ${res.url}\n`;
+                msg += `📂 需扫描的路径:   ${res.path}\n\n`;
+                
+                // 尝试复制 (兼容 HTTP 环境)
+                let copied = false;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    try { await navigator.clipboard.writeText(res.path); copied = true; } catch(e){}
+                }
+                
+                if (!copied) {
+                    const ta = document.createElement('textarea');
+                    ta.value = res.path;
+                    ta.style.position = 'fixed';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); copied = true; } catch(e){}
+                    document.body.removeChild(ta);
+                }
+
+                msg += copied ? "✅ 路径已自动复制到剪贴板！\n" : "⚠️ 自动复制失败，请手动复制上面的路径。\n";
+                msg += "👉 请在弹出的页面中粘贴路径并点击“开始”。";
+
+                document.getElementById('resultText').value = msg;
+                document.getElementById('resultModal').style.display = 'flex';
+                window.open(res.url, '_blank');
             } else {
                 alert("❌ 获取路径失败: " + res.msg);
             }
