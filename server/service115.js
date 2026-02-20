@@ -224,6 +224,22 @@ class Service115 {
             return { success: false, items: [] };
         }
     }
+
+    // 9. 获取文件夹路径信息
+    async getPath(cookie, cid) {
+        try {
+            const res = await axios.get("https://webapi.115.com/files", {
+                headers: this._getHeaders(cookie),
+                params: { aid: 1, cid: cid, limit: 1, format: "json" }
+            });
+            if (res.data.state) {
+                return { success: true, path: res.data.path || [] };
+            }
+            return { success: false, path: [] };
+        } catch (e) {
+            return { success: false, path: [] };
+        }
+    }
 }
 
 module.exports = new Service115();
