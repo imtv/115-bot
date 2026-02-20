@@ -491,56 +491,58 @@ async function refreshOpenList(cid) {
     // 假设 OpenList 接口为 POST /api/refresh，参数为 path
     // 如果是其他接口格式，需根据实际情况调整
     try {
-        // 【修改】智能构建 API 地址 (支持自动重试)
-        let apiUrl = globalSettings.olUrl.replace(/\/$/, "");
-        let isAutoPath = false;
-        // 如果用户填写的地址没有包含 /api/，则自动追加默认路径
-        if (!apiUrl.includes('/api/')) {
-            apiUrl += "/api/admin/refresh"; 
-            isAutoPath = true;
+        let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
+        let strategies = [];
+
+        // 如果用户填写的地址包含 /api/，则只尝试用户填写的
+        if (baseUrl.includes('/api/')) {
+            strategies.push({ url: baseUrl, body: { path: finalPath } });
+        } else {
+            // 自动尝试多种常见接口
+            strategies = [
+                // 1. 标准管理接口 (AList v3 / OpenList)
+                { url: baseUrl + "/api/admin/refresh", body: { path: finalPath } },
+                // 2. 兼容接口 (旧版)
+                { url: baseUrl + "/api/refresh", body: { path: finalPath } },
+                // 3. 浏览接口 (强制刷新) - 最强兼容性方案
+                { url: baseUrl + "/api/fs/list", body: { path: finalPath, refresh: true, page: 1, per_page: 1 } }
+            ];
         }
         
-        // 构造请求
-        // 这里假设 OpenList 使用 query 参数或 JSON body，且可能需要 token
-        // 根据常见 OpenList 实现，尝试 POST JSON
-        const res = await axios.post(apiUrl, {
-            path: finalPath
-        }, {
-            headers: {
-                "Authorization": globalSettings.olToken ? `Bearer ${globalSettings.olToken}` : "",
-                "Content-Type": "application/json"
-            },
-            timeout: 5000
-        });
+        let lastError = null;
 
-        // 【新增】检查返回是否为 HTML (网页代码)
-        if (typeof res.data === 'string' && res.data.trim().startsWith('<')) {
-            // 如果是自动拼接的路径且失败了，尝试一下旧版接口 /api/refresh
-            if (isAutoPath && apiUrl.endsWith("/api/admin/refresh")) {
-                console.log(`[OpenList] /api/admin/refresh 返回了网页，尝试 /api/refresh ...`);
-                const retryUrl = apiUrl.replace("/api/admin/refresh", "/api/refresh");
-                const retryRes = await axios.post(retryUrl, { path: finalPath }, {
+        for (const strategy of strategies) {
+            try {
+                console.log(`[OpenList] 尝试请求: ${strategy.url}`);
+                const res = await axios.post(strategy.url, strategy.body, {
                     headers: {
                         "Authorization": globalSettings.olToken ? `Bearer ${globalSettings.olToken}` : "",
                         "Content-Type": "application/json"
                     },
-                    timeout: 5000
+                    timeout: 10000 // 增加超时时间，因为刷新可能较慢
                 });
-                // 如果重试成功（且不是HTML），则返回
-                if (typeof retryRes.data !== 'string' || !retryRes.data.trim().startsWith('<')) {
-                    return { success: true, msg: "索引请求已发送(旧版接口)", data: retryRes.data };
-                }
-            }
 
-            // 尝试提取 <title> 内容以便报错
-            const titleMatch = res.data.match(/<title>(.*?)<\/title>/i);
-            const pageTitle = titleMatch ? titleMatch[1] : "未知网页";
-            const errorMsg = `接口返回了网页(URL: ${apiUrl})。可能是Token错误或路径不对。返回标题: ${pageTitle}`;
-            console.error(`[OpenList] 错误: ${errorMsg}`);
-            throw new Error(errorMsg);
+                // 检查返回是否为 HTML (网页代码)
+                if (typeof res.data === 'string' && res.data.trim().startsWith('<')) {
+                    const titleMatch = res.data.match(/<title>(.*?)<\/title>/i);
+                    const pageTitle = titleMatch ? titleMatch[1] : "未知网页";
+                    throw new Error(`接口返回了网页 (标题: ${pageTitle})`);
+                }
+                
+                // 检查业务状态码 (AList通常返回 code: 200)
+                if (res.data.code !== undefined && res.data.code !== 200) {
+                     throw new Error(`API业务错误: ${res.data.message || '未知'} (Code: ${res.data.code})`);
+                }
+
+                console.log(`[OpenList] 成功! 使用接口: ${strategy.url}`);
+                return { success: true, msg: "索引请求已发送", data: res.data };
+            } catch (e) {
+                console.warn(`[OpenList] 请求 ${strategy.url} 失败: ${e.message}`);
+                lastError = e;
+            }
         }
 
-        return { success: true, msg: "索引请求已发送", data: res.data };
+        throw new Error(`所有尝试均失败。最后一次错误: ${lastError ? lastError.message : "未知"}`);
     } catch (e) {
         throw new Error(`OpenList请求失败: ${e.message}`);
     }
