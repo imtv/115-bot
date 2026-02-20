@@ -35,7 +35,6 @@ let globalSettings = {
     adminUser: "admin", adminPass: "admin",
     olUrl: "", // OpenList 地址
     olToken: "", // OpenList 密码/Token
-    ol115Prefix: "", // 115侧路径前缀 (如 /videos-115)
     olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
 };
 let globalTasks = [];
@@ -95,7 +94,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, ol115Prefix, olMountPrefix } = req.body;
+    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olMountPrefix } = req.body;
     
     if (cookie) {
         try {
@@ -113,7 +112,6 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (adminPass) globalSettings.adminPass = adminPass;
     if (olUrl !== undefined) globalSettings.olUrl = olUrl;
     if (olToken !== undefined) globalSettings.olToken = olToken;
-    if (ol115Prefix !== undefined) globalSettings.ol115Prefix = ol115Prefix;
     if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
     
     saveSettings();
@@ -129,7 +127,7 @@ app.get('/api/folders', async (req, res) => {
     
     try {
         const data = await service115.getFolderList(globalSettings.cookie, targetCid);
-        res.json({ success: true, data });
+        res.json({ success: true, data, rootCid: globalSettings.rootCid }); // 返回 rootCid 供前端判断边界
     } catch (e) {
         res.status(500).json({ success: false, msg: "获取目录失败: " + e.message });
     }
@@ -468,16 +466,23 @@ async function refreshOpenList(cid) {
     if (!pathRes.success) throw new Error("无法获取115文件夹路径");
 
     // 构造路径字符串: /videos-115/影集/生命树
-    // pathRes.path 是一个数组 [{name: "videos-115", cid: ...}, ...]
-    // 注意：115返回的 path 数组通常不包含根目录(0)，从一级目录开始
     let fullPath115 = "/" + pathRes.path.map(p => p.name).join("/");
     
-    // 2. 路径映射
-    let finalPath = fullPath115;
-    if (globalSettings.ol115Prefix && globalSettings.olMountPrefix) {
-        if (fullPath115.startsWith(globalSettings.ol115Prefix)) {
-            finalPath = fullPath115.replace(globalSettings.ol115Prefix, globalSettings.olMountPrefix);
+    // 2. 自动获取根目录路径作为前缀
+    let rootPath115 = "";
+    if (globalSettings.rootCid !== "0") {
+        const rootPathRes = await service115.getPath(globalSettings.cookie, globalSettings.rootCid);
+        if (rootPathRes.success) {
+            rootPath115 = "/" + rootPathRes.path.map(p => p.name).join("/");
         }
+    }
+
+    // 3. 路径映射
+    let finalPath = fullPath115;
+    // 如果配置了挂载点，且当前路径确实在根目录下
+    if (globalSettings.olMountPrefix && fullPath115.startsWith(rootPath115)) {
+        // 将 115根目录路径 替换为 OpenList挂载路径
+        finalPath = fullPath115.replace(rootPath115, globalSettings.olMountPrefix);
     }
 
     console.log(`[OpenList] 准备刷新路径: ${finalPath} (原路径: ${fullPath115})`);
