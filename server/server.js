@@ -379,6 +379,16 @@ async function processTask(task, isCron = false) {
         let shareInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode);
         
         const fileIds = shareInfo.fileIds;
+
+        // 统计文件和文件夹数量
+        let folderCount = 0;
+        let fileCount = 0;
+        if (shareInfo.list) {
+            shareInfo.list.forEach(item => {
+                if (item.cid) folderCount++;
+                else fileCount++;
+            });
+        }
         
         if (!fileIds || fileIds.length === 0) {
             const finalStatus = isCron ? 'scheduled' : 'failed';
@@ -421,7 +431,16 @@ async function processTask(task, isCron = false) {
                 task.lastSavedFileIds = recent.items;
             }
 
-            let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
+            let countDesc = "";
+            if (folderCount > 0 && fileCount > 0) {
+                countDesc = `${folderCount} 个文件夹, ${fileCount} 个文件`;
+            } else if (folderCount > 0) {
+                countDesc = `${folderCount} 个文件夹`;
+            } else {
+                countDesc = `${fileCount} 个文件`;
+            }
+
+            let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${countDesc}`;
             
             // 【恢复】转存成功后，自动触发 OpenList 扫描
             try {
