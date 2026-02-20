@@ -34,7 +34,6 @@ let globalSettings = {
     cookie: "", rootCid: "0", rootName: "根目录", 
     adminUser: "admin", adminPass: "admin",
     olUrl: "", // OpenList 地址
-    olToken: "", // OpenList 密码/Token
     olUsername: "", // OpenList 登录名
     olPassword: "", // OpenList 登录密码
     olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
@@ -96,7 +95,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olUsername, olPassword, olMountPrefix } = req.body;
+    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olUsername, olPassword, olMountPrefix } = req.body;
     
     if (cookie) {
         try {
@@ -113,7 +112,6 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (adminUser) globalSettings.adminUser = adminUser;
     if (adminPass) globalSettings.adminPass = adminPass;
     if (olUrl !== undefined) globalSettings.olUrl = olUrl;
-    if (olToken !== undefined) globalSettings.olToken = olToken;
     if (olUsername !== undefined) globalSettings.olUsername = olUsername;
     if (olPassword !== undefined) globalSettings.olPassword = olPassword;
     if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
