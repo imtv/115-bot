@@ -200,11 +200,10 @@
             
             <!-- Toolbar -->
             <div style="display:flex; gap:10px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #eee; align-items: center;">
-                <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem; flex:1;">
-                <button onclick="createNewFolder()" class="btn-outline" style="width:auto; padding:8px 12px;">➕ 新建</button>
+                <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem; flex:1; padding: 8px 10px;">
+                <button onclick="createNewFolder()" class="btn-outline" style="width:auto; padding:8px 12px; margin-bottom:0;">➕ 新建</button>
                 <div style="width: 1px; height: 24px; background: #eee;"></div>
-                <button id="moveBtn" onclick="startMove()" class="btn-edit" style="width:auto; padding:8px 12px;">🚚 移动选中</button>
-                <button onclick="deleteSelected()" class="btn-danger" style="width:auto; padding:8px 12px;">🗑️ 删除选中</button>
+                <button onclick="deleteSelected()" class="btn-danger" style="width:auto; padding:8px 12px; margin-bottom:0;">🗑️ 删除选中</button>
             </div>
 
             <div id="folderBreadcrumb" style="font-size:0.85rem; color:#2563eb; margin-bottom:10px; font-weight:500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">/</div>
@@ -212,8 +211,7 @@
             
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <span style="font-size: 0.8rem; color: #666; align-self: center;" id="selectionCount"></span>
-                <span id="moveStatus" style="font-size: 0.8rem; color: #f59e0b; align-self: center; display: none; font-weight: bold;">请进入目标文件夹...</span>
-                <button id="confirmBtn" onclick="confirmFolder()" style="width: auto;">✅ 选择当前目录</button>
+                <button onclick="confirmFolder()" style="width: auto;">✅ 选择当前目录</button>
             </div>
         </div>
     </div>
@@ -225,8 +223,6 @@
     let isSettingRoot = false; // 标记是否正在设置全局根目录
     let allTasks = [];      // 缓存任务列表用于编辑回显
     let selectedFiles = new Set(); // 选中的文件ID集合
-    let filesToMove = [];   // 待移动的文件ID列表
-    let isMovingMode = false; // 是否处于移动模式
     let systemRootCid = "0"; // 后端配置的根目录CID
 
     // 初始化
@@ -556,37 +552,6 @@
         }
     }
 
-    function startMove() {
-        if (isMovingMode) {
-            // 取消移动模式
-            isMovingMode = false;
-            filesToMove = [];
-            document.getElementById('moveBtn').innerText = '🚚 移动选中';
-            document.getElementById('confirmBtn').innerText = '✅ 选择当前目录';
-            document.getElementById('moveStatus').style.display = 'none';
-            document.getElementById('moveBtn').classList.remove('btn-danger');
-            document.getElementById('moveBtn').classList.add('btn-edit');
-            return;
-        }
-
-        if(selectedFiles.size === 0) return alert("请先选择要移动的文件/文件夹");
-        
-        filesToMove = Array.from(selectedFiles);
-        isMovingMode = true;
-        
-        // 更新 UI 进入移动模式
-        document.getElementById('moveBtn').innerText = '❌ 取消移动';
-        document.getElementById('moveBtn').classList.remove('btn-edit');
-        document.getElementById('moveBtn').classList.add('btn-danger');
-        document.getElementById('confirmBtn').innerText = '📂 移动到此';
-        document.getElementById('moveStatus').innerText = `已选 ${filesToMove.length} 项，请进入目标文件夹后点击右侧按钮 👉`;
-        document.getElementById('moveStatus').style.display = 'inline';
-        
-        // 清空当前选择（视觉上），因为我们要去别的目录了
-        selectedFiles.clear();
-        updateSelectionUI();
-    }
-
     async function createNewFolder() {
         const name = document.getElementById('newFolderName').value;
         if(!name) return alert("请输入文件夹名称");
@@ -602,22 +567,6 @@
     }
 
     function confirmFolder() {
-        // 处理移动逻辑
-        if (isMovingMode) {
-            if(!confirm(`确定将 ${filesToMove.length} 项移动到当前目录 [${curPathName}] 吗？`)) return;
-            
-            request('/files/move', 'POST', { fileIds: filesToMove, targetCid: curCid }).then(res => {
-                if(res.success) {
-                    alert('移动成功');
-                    startMove(); // 退出移动模式
-                    loadFolders(curCid); // 刷新当前目录
-                } else {
-                    alert("移动失败: " + res.msg);
-                }
-            });
-            return;
-        }
-
         if (isEditMode) {
             document.getElementById('editTargetPath').value = curPathName;
             document.getElementById('editTargetCid').value = curCid;
