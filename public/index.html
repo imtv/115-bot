@@ -22,7 +22,6 @@
         .btn-danger { background: #ef4444; color: white; border: none; }
         .btn-edit { background: #3b82f6; color: white; border: none; }
         .btn-run { background: #10b981; color: white; border: none; } /* 新增运行按钮样式 */
-        .btn-refresh { background: #8b5cf6; color: white; border: none; } /* 索引按钮样式 */
         
         /* Task List */
         .task-item { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #ccc; }
@@ -71,17 +70,6 @@
                     <input type="text" id="rootPathName" readonly style="background:#eee;">
                     <input type="hidden" id="rootCid">
                     <button onclick="openFolderPicker(false, true)" class="btn-outline" style="width:80px;">选择</button>
-                </div>
-            </div>
-            <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
-                <label style="font-size:0.8rem;">OpenList 索引集成</label>
-                <input type="text" id="olUrl" placeholder="OpenList 地址 (如 http://192.168.1.5:5244，也可填完整API路径)">
-                <input type="text" id="olToken" placeholder="Token (AList后台获取的Token，非登录密码)">
-                <div class="row">
-                    <div style="flex:1">
-                        <label style="font-size:0.7rem; color:#666;">OpenList 挂载路径 (对应上方根目录)</label>
-                        <input type="text" id="olMountPrefix" placeholder="例如 /115网盘 (将自动替换根目录路径)">
-                    </div>
                 </div>
             </div>
             <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
@@ -292,9 +280,6 @@
             document.getElementById('rootPathName').value = res.data.rootName || '根目录';
             document.getElementById('setAdminUser').value = res.data.adminUser || 'admin';
             document.getElementById('setAdminPass').value = res.data.adminPass || 'admin';
-            document.getElementById('olUrl').value = res.data.olUrl || '';
-            document.getElementById('olToken').value = res.data.olToken || '';
-            document.getElementById('olMountPrefix').value = res.data.olMountPrefix || '';
         }
     }
 
@@ -305,11 +290,7 @@
         const adminUser = document.getElementById('setAdminUser').value;
         const adminPass = document.getElementById('setAdminPass').value;
         
-        const olUrl = document.getElementById('olUrl').value;
-        const olToken = document.getElementById('olToken').value;
-        const olMountPrefix = document.getElementById('olMountPrefix').value;
-        
-        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olMountPrefix });
+        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass });
         if(res.success) alert("设置已保存"); else alert(res.msg);
     }
 
@@ -405,7 +386,6 @@
                     </div>
                     <div style="display:flex; gap:5px;">
                         ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
-                        <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList索引此路径">索引</button>
                         <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
                         <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
                     </div>
