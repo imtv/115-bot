@@ -491,9 +491,12 @@ async function refreshOpenList(cid) {
     // 假设 OpenList 接口为 POST /api/refresh，参数为 path
     // 如果是其他接口格式，需根据实际情况调整
     try {
-        // 去除末尾斜杠，防止 OpenList 匹配失败
-        // 【修改】OpenList 标准刷新接口通常为 /api/admin/refresh
-        const apiUrl = globalSettings.olUrl.replace(/\/$/, "") + "/api/admin/refresh"; 
+        // 【修改】智能构建 API 地址
+        let apiUrl = globalSettings.olUrl.replace(/\/$/, "");
+        // 如果用户填写的地址没有包含 /api/，则自动追加默认路径
+        if (!apiUrl.includes('/api/')) {
+            apiUrl += "/api/refresh"; // 回退到更通用的 /api/refresh，或者由用户在设置里填全路径
+        }
         
         // 构造请求
         // 这里假设 OpenList 使用 query 参数或 JSON body，且可能需要 token
@@ -507,6 +510,16 @@ async function refreshOpenList(cid) {
             },
             timeout: 5000
         });
+
+        // 【新增】检查返回是否为 HTML (网页代码)
+        if (typeof res.data === 'string' && res.data.trim().startsWith('<')) {
+            // 尝试提取 <title> 内容以便报错
+            const titleMatch = res.data.match(/<title>(.*?)<\/title>/i);
+            const pageTitle = titleMatch ? titleMatch[1] : "未知网页";
+            console.error(`[OpenList] 错误: 接口返回了网页而不是JSON。页面标题: ${pageTitle}`);
+            throw new Error(`接口路径错误或未登录 (返回了网页: ${pageTitle})`);
+        }
+
         return { success: true, msg: "索引请求已发送", data: res.data };
     } catch (e) {
         throw new Error(`OpenList请求失败: ${e.message}`);
