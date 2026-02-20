@@ -159,19 +159,6 @@ app.post('/api/files/delete', async (req, res) => {
     }
 });
 
-// 12. 批量移动文件 (公开)
-app.post('/api/files/move', async (req, res) => {
-    const { fileIds, targetCid } = req.body;
-    if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
-    
-    try {
-        const result = await service115.moveFiles(globalSettings.cookie, fileIds, targetCid);
-        res.json(result);
-    } catch (e) {
-        res.status(500).json({ success: false, msg: e.message });
-    }
-});
-
 // 5. 获取任务列表 (公开)
 app.get('/api/tasks', (req, res) => {
     // 隐藏敏感信息
@@ -421,11 +408,17 @@ async function processTask(task, isCron = false) {
                 task.lastSavedFileIds = recent.items;
             }
 
-            const logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
+            let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
+            
+            // 【修改】转存成功后，触发 OpenList 索引并将结果写入日志
+            try {
+                const olRes = await refreshOpenList(task.targetCid);
+                logMsg += ` [索引: ${olRes.success ? '已发送' : '失败'}]`;
+            } catch (e) {
+                logMsg += ` [索引失败]`;
+            }
+            
             updateTaskStatus(task, finalStatus, logMsg);
-
-            // 【新增】转存成功后，触发 OpenList 索引
-            refreshOpenList(task.targetCid).then(r => console.log(`[OpenList] 自动索引: ${r.msg}`)).catch(e => console.error(`[OpenList] 自动索引失败: ${e.message}`));
 
         } else if (saveResult.status === 'exists') {
             // 【新增】处理“文件已存在”的情况：检查目标文件夹是否真的有文件
@@ -436,10 +429,17 @@ async function processTask(task, isCron = false) {
                 // 目标文件夹里有文件，说明虽然提示重复，但文件确实在里面（可能是秒传成功）
                 task.lastSuccessDate = todayStr;
                 task.lastSavedFileIds = checkFiles.items;
-                updateTaskStatus(task, isCron ? 'scheduled' : 'success', `[${formatTime()}] 转存成功 (秒传/已存在)`);
                 
-                // 【新增】即使是秒传，也触发一次索引，确保 OpenList 能看到
-                refreshOpenList(task.targetCid).then(r => console.log(`[OpenList] 自动索引: ${r.msg}`)).catch(e => console.error(`[OpenList] 自动索引失败: ${e.message}`));
+                let logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
+                // 【修改】即使是秒传，也触发一次索引并将结果写入日志
+                try {
+                    const olRes = await refreshOpenList(task.targetCid);
+                    logMsg += ` [索引: ${olRes.success ? '已发送' : '失败'}]`;
+                } catch (e) {
+                    logMsg += ` [索引失败]`;
+                }
+                
+                updateTaskStatus(task, isCron ? 'scheduled' : 'success', logMsg);
 
             } else {
                 // 目标文件夹是空的，说明文件在别的地方（比如根目录）
@@ -492,7 +492,8 @@ async function refreshOpenList(cid) {
     // 如果是其他接口格式，需根据实际情况调整
     try {
         // 去除末尾斜杠，防止 OpenList 匹配失败
-        const apiUrl = globalSettings.olUrl.replace(/\/$/, "") + "/api/refresh"; 
+        // 【修改】OpenList 标准刷新接口通常为 /api/admin/refresh
+        const apiUrl = globalSettings.olUrl.replace(/\/$/, "") + "/api/admin/refresh"; 
         
         // 构造请求
         // 这里假设 OpenList 使用 query 参数或 JSON body，且可能需要 token
