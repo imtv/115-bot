@@ -32,10 +32,7 @@ if (!fs.existsSync(DATA_ROOT)) {
 // --- 全局缓存 ---
 let globalSettings = { 
     cookie: "", rootCid: "0", rootName: "根目录", 
-    adminUser: "admin", adminPass: "admin",
-    olUrl: "", // OpenList 地址
-    olToken: "", // OpenList 密码/Token
-    olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
+    adminUser: "admin", adminPass: "admin"
 };
 let globalTasks = [];
 let cronJobs = {};
@@ -94,7 +91,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olMountPrefix } = req.body;
+    const { cookie, rootCid, rootName, adminUser, adminPass } = req.body;
     
     if (cookie) {
         try {
@@ -110,9 +107,6 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (rootName !== undefined) globalSettings.rootName = rootName;
     if (adminUser) globalSettings.adminUser = adminUser;
     if (adminPass) globalSettings.adminPass = adminPass;
-    if (olUrl !== undefined) globalSettings.olUrl = olUrl;
-    if (olToken !== undefined) globalSettings.olToken = olToken;
-    if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
     
     saveSettings();
     res.json({ success: true, msg: "设置已保存", data: globalSettings });
@@ -308,20 +302,6 @@ app.put('/api/task/:id/run', (req, res) => {
     res.json({ success: true, msg: "任务已启动" });
 });
 
-// 13. 手动触发 OpenList 索引 (公开)
-app.post('/api/task/:id/refresh-index', async (req, res) => {
-    const taskId = parseInt(req.params.id);
-    const task = globalTasks.find(t => t.id === taskId);
-    if (!task) return res.status(404).json({ success: false, msg: "任务不存在" });
-
-    try {
-        const result = await refreshOpenList(task.targetCid);
-        res.json(result);
-    } catch (e) {
-        res.status(500).json({ success: false, msg: e.message });
-    }
-});
-
 // --- 内部功能函数 ---
 
 function startCronJob(task) {
@@ -408,15 +388,7 @@ async function processTask(task, isCron = false) {
                 task.lastSavedFileIds = recent.items;
             }
 
-            let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
-            
-            // 【修改】转存成功后，触发 OpenList 索引并将结果写入日志
-            try {
-                const olRes = await refreshOpenList(task.targetCid);
-                logMsg += ` [索引: ${olRes.success ? '已发送' : '失败'}]`;
-            } catch (e) {
-                logMsg += ` [索引失败]`;
-            }
+            const logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
             
             updateTaskStatus(task, finalStatus, logMsg);
 
@@ -430,14 +402,7 @@ async function processTask(task, isCron = false) {
                 task.lastSuccessDate = todayStr;
                 task.lastSavedFileIds = checkFiles.items;
                 
-                let logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
-                // 【修改】即使是秒传，也触发一次索引并将结果写入日志
-                try {
-                    const olRes = await refreshOpenList(task.targetCid);
-                    logMsg += ` [索引: ${olRes.success ? '已发送' : '失败'}]`;
-                } catch (e) {
-                    logMsg += ` [索引失败]`;
-                }
+                const logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
                 
                 updateTaskStatus(task, isCron ? 'scheduled' : 'success', logMsg);
 
@@ -454,124 +419,6 @@ async function processTask(task, isCron = false) {
     } catch (e) {
         const finalStatus = isCron ? 'scheduled' : 'error';
         updateTaskStatus(task, finalStatus, `错误: ${e.message}`);
-    }
-}
-
-// 【新增】OpenList 索引刷新逻辑
-async function refreshOpenList(cid) {
-    if (!globalSettings.olUrl) return { success: false, msg: "未配置 OpenList" };
-
-    // 1. 获取 115 完整路径
-    const pathRes = await service115.getPath(globalSettings.cookie, cid);
-    if (!pathRes.success) throw new Error("无法获取115文件夹路径");
-
-    // 构造路径字符串: /videos-115/影集/生命树
-    let fullPath115 = "/" + pathRes.path.map(p => p.name).join("/");
-    
-    // 2. 自动获取根目录路径作为前缀
-    let rootPath115 = "";
-    if (globalSettings.rootCid !== "0") {
-        const rootPathRes = await service115.getPath(globalSettings.cookie, globalSettings.rootCid);
-        if (rootPathRes.success) {
-            rootPath115 = "/" + rootPathRes.path.map(p => p.name).join("/");
-        }
-    }
-
-    // 3. 路径映射
-    let finalPath = fullPath115;
-    // 如果配置了挂载点，且当前路径确实在根目录下
-    if (globalSettings.olMountPrefix && fullPath115.startsWith(rootPath115)) {
-        // 将 115根目录路径 替换为 OpenList挂载路径
-        finalPath = fullPath115.replace(rootPath115, globalSettings.olMountPrefix);
-    }
-
-    console.log(`[OpenList] 准备刷新路径: ${finalPath} (原路径: ${fullPath115})`);
-
-    // 3. 调用 OpenList 接口
-    // 假设 OpenList 接口为 POST /api/refresh，参数为 path
-    // 如果是其他接口格式，需根据实际情况调整
-    try {
-        let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
-        
-        // 【新增】Token 容错处理：去除空格，去除可能的 "Bearer " 前缀
-        let token = (globalSettings.olToken || "").trim();
-        if (token.toLowerCase().startsWith("bearer ")) {
-            token = token.substring(7).trim();
-        }
-
-        let strategies = [];
-
-        // 如果用户填写的地址包含 /api/，则只尝试用户填写的
-        if (baseUrl.includes('/api/')) {
-            // 简单适配 update 接口参数
-            if (baseUrl.endsWith('/index/update')) {
-                strategies.push({ url: baseUrl, body: { paths: [finalPath] } });
-            } else {
-                strategies.push({ url: baseUrl, body: { path: finalPath } });
-            }
-        } else {
-            // 自动尝试多种常见接口
-            strategies = [
-                // 0. 用户指定的新接口 (OpenList) - 优先级最高
-                { url: baseUrl + "/api/admin/index/update", body: { paths: [finalPath] } },
-                // 1. 标准管理接口 (AList v3 / OpenList)
-                { url: baseUrl + "/api/admin/refresh", body: { path: finalPath } },
-                // 2. 兼容接口 (旧版)
-                { url: baseUrl + "/api/refresh", body: { path: finalPath } },
-                // 3. 浏览接口 (强制刷新) - 最强兼容性方案
-                { url: baseUrl + "/api/fs/list", body: { path: finalPath, refresh: true, page: 1, per_page: 1 } }
-            ];
-        }
-        
-        let lastError = null;
-
-        for (const strategy of strategies) {
-            try {
-                console.log(`[OpenList] 尝试请求: ${strategy.url}`);
-                const res = await axios.post(strategy.url, strategy.body, {
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Content-Type": "application/json"
-                    },
-                    timeout: 10000 // 增加超时时间，因为刷新可能较慢
-                });
-
-                // 检查返回是否为 HTML (网页代码)
-                if (typeof res.data === 'string' && res.data.trim().startsWith('<')) {
-                    const titleMatch = res.data.match(/<title>(.*?)<\/title>/i);
-                    const pageTitle = titleMatch ? titleMatch[1] : "未知网页";
-                    throw new Error(`接口返回了网页 (标题: ${pageTitle})`);
-                }
-                
-                // 检查业务状态码 (AList通常返回 code: 200)
-                if (res.data.code !== undefined && res.data.code !== 200) {
-                     let msg = `API业务错误: ${res.data.message || '未知'} (Code: ${res.data.code})`;
-                     if (res.data.code === 401) msg += " [请检查后台设置的Token是否正确]";
-                     
-                     // 【新增】OpenList 特有错误：搜索未开启
-                     // 如果遇到这个错误，说明找对了接口但功能没开，应立即停止重试并报错
-                     if (res.data.code === 404 && res.data.message && res.data.message.includes("search not available")) {
-                         msg += " [请在 OpenList 后台开启搜索索引功能]";
-                         throw new Error("CRITICAL_OPENLIST_ERROR: " + msg);
-                     }
-
-                     throw new Error(msg);
-                }
-
-                console.log(`[OpenList] 成功! 使用接口: ${strategy.url}`);
-                return { success: true, msg: "索引请求已发送", data: res.data };
-            } catch (e) {
-                console.warn(`[OpenList] 请求 ${strategy.url} 失败: ${e.message}`);
-                if (e.message.startsWith("CRITICAL_OPENLIST_ERROR:")) {
-                    throw new Error(e.message.replace("CRITICAL_OPENLIST_ERROR: ", ""));
-                }
-                lastError = e;
-            }
-        }
-
-        throw new Error(`所有尝试均失败。最后一次错误: ${lastError ? lastError.message : "未知"}`);
-    } catch (e) {
-        throw new Error(`OpenList请求失败: ${e.message}`);
     }
 }
 
