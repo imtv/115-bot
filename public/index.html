@@ -75,8 +75,8 @@
             </div>
             <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
                 <label style="font-size:0.8rem;">OpenList 索引集成</label>
-                <input type="text" id="olUrl" placeholder="OpenList 地址 (例如 http://192.168.1.5:3000)">
-                <input type="text" id="olToken" placeholder="Token / 密码 (可选)">
+                <input type="text" id="olUrl" placeholder="OpenList 地址 (如 http://192.168.1.5:5244，也可填完整API路径)">
+                <input type="text" id="olToken" placeholder="Token (AList后台获取的Token，非登录密码)">
                 <div class="row">
                     <div style="flex:1">
                         <label style="font-size:0.7rem; color:#666;">OpenList 挂载路径 (对应上方根目录)</label>
@@ -212,20 +212,6 @@
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <span style="font-size: 0.8rem; color: #666; align-self: center;" id="selectionCount"></span>
                 <button onclick="confirmFolder()" style="width: auto;">✅ 选择当前目录</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Result Modal (用于显示可复制的详情) -->
-    <div id="resultModal" class="modal">
-        <div class="modal-content" style="width: 600px; max-height: 80vh;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <strong>📜 索引结果详情</strong>
-                <span onclick="document.getElementById('resultModal').style.display='none'" style="cursor:pointer; font-size:1.5rem;">&times;</span>
-            </div>
-            <textarea id="resultText" style="width:100%; height:300px; font-family:monospace; font-size:0.85rem; padding:10px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; color:#374151; resize:vertical;" readonly></textarea>
-            <div style="text-align:right; margin-top:10px;">
-                <button onclick="document.getElementById('resultModal').style.display='none'">关闭</button>
             </div>
         </div>
     </div>
@@ -398,13 +384,9 @@
     async function refreshIndex(id) {
         if(!confirm('确定要通知 OpenList 索引该任务的路径吗？')) return;
         const res = await request(`/task/${id}/refresh-index`, 'POST');
-        
-        const resultText = res.success 
-            ? `✅ 索引请求已发送\n\nOpenList响应:\n${JSON.stringify(res.data, null, 2)}`
-            : `❌ 失败: ${res.msg}`;
-            
-        document.getElementById('resultText').value = resultText;
-        document.getElementById('resultModal').style.display = 'flex';
+        if(res.success) {
+            alert(`✅ 索引请求已发送\nOpenList响应: ${JSON.stringify(res.data)}`);
+        } else alert("❌ 失败: " + res.msg);
     }
 
     async function loadTasks() {
