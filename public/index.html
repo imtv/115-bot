@@ -200,10 +200,10 @@
             
             <!-- Toolbar -->
             <div style="display:flex; gap:10px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #eee; align-items: center;">
-                <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem; flex:1;">
-                <button onclick="createNewFolder()" class="btn-outline" style="width:auto; padding:8px 12px;">➕ 新建</button>
+                <input type="text" id="newFolderName" placeholder="新建文件夹名称" style="margin-bottom:0; font-size:0.9rem; flex:1; padding: 0 10px; height: 38px;">
+                <button onclick="createNewFolder()" class="btn-outline" style="width:auto; padding:0 12px; margin-bottom:0; height: 38px; display: flex; align-items: center;">➕ 新建</button>
                 <div style="width: 1px; height: 24px; background: #eee;"></div>
-                <button onclick="deleteSelected()" class="btn-danger" style="width:auto; padding:8px 12px;">🗑️ 删除选中</button>
+                <button onclick="deleteSelected()" class="btn-danger" style="width:auto; padding:0 12px; margin-bottom:0; height: 38px; display: flex; align-items: center;">🗑️ 删除选中</button>
             </div>
 
             <div id="folderBreadcrumb" style="font-size:0.85rem; color:#2563eb; margin-bottom:10px; font-weight:500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">/</div>
@@ -395,12 +395,11 @@
 
     // 【恢复】手动触发扫描 (调用后端)
     async function refreshIndex(id) {
-        if(!confirm('确定要通知 OpenList 扫描该任务的路径吗？')) return;
+        // 移除确认弹窗，直接执行
         const res = await request(`/task/${id}/refresh-index`, 'POST');
         
         if(res.success) {
-            alert('✅ 扫描请求已发送');
-            loadTasks(); // 刷新列表以显示日志
+            loadTasks(); // 刷新列表，结果会显示在任务日志中
         } else {
             alert("❌ 失败: " + res.msg);
         }
@@ -422,7 +421,7 @@
                     </div>
                     <div style="display:flex; gap:5px;">
                         ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
-                        <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList扫描">STRM</button>
+                        <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList扫描">扫描</button>
                         <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
                         <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
                     </div>
@@ -506,6 +505,7 @@
         const res = await request(url);
         
         if(res.success) {
+            systemRootCid = res.rootCid || "0"; // 更新系统根目录CID
             const paths = res.data.path || [];
             
             // 如果是初始加载(无cid)，则从返回的 path 中获取当前 cid (即后台设置的根目录)
@@ -520,7 +520,8 @@
             
             // 计算上一级目录
             let parentCid = (paths.length > 1) ? paths[paths.length-2].cid : '0';
-            let html = (curCid !== '0') ? `<div style="padding:10px; cursor:pointer; background:#f9fafb;" onclick="loadFolders('${parentCid}')">⬅️ 返回上一级</div>` : '';
+            // 【修改】只有当当前目录不是系统根目录时，才显示返回上一级
+            let html = (curCid !== '0' && curCid !== systemRootCid) ? `<div style="padding:10px; cursor:pointer; background:#f9fafb;" onclick="loadFolders('${parentCid}')">⬅️ 返回上一级</div>` : '';
             
             res.data.list.forEach(f => {
                 const isFolder = f.type === 'folder';
