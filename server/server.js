@@ -335,6 +335,19 @@ app.post('/api/task/:id/refresh-index', async (req, res) => {
     }
 });
 
+// 14. 手动触发指定路径扫描 (公开)
+app.post('/api/scan/path', async (req, res) => {
+    const { path } = req.body;
+    if (!path) return res.status(400).json({ success: false, msg: "路径不能为空" });
+
+    try {
+        const result = await executeOpenListScan(path);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ success: false, msg: e.message });
+    }
+});
+
 // --- 内部功能函数 ---
 
 function startCronJob(task) {
@@ -524,6 +537,12 @@ async function refreshOpenList(cid) {
 
     console.log(`[OpenList] 准备扫描路径: ${finalPath}`);
 
+    return await executeOpenListScan(finalPath);
+}
+
+async function executeOpenListScan(path) {
+    if (!globalSettings.olUrl) return { success: false, msg: "未配置 OpenList" };
+    
     try {
         let baseUrl = globalSettings.olUrl.replace(/\/$/, "");
         let token = await getOpenListToken();
@@ -532,7 +551,7 @@ async function refreshOpenList(cid) {
         const url = baseUrl + "/api/admin/scan/start";
         
         const res = await axios.post(url, {
-            path: finalPath, // 抓包确认为 path 且不是数组
+            path: path, // 抓包确认为 path 且不是数组
             limit: 0         // 抓包确认为 0
         }, {
             headers: {
