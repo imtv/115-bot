@@ -397,9 +397,13 @@
     async function refreshIndex(id) {
         if(!confirm('确定要通知 OpenList 扫描该任务的路径吗？')) return;
         const res = await request(`/task/${id}/refresh-index`, 'POST');
-        const resultText = res.success ? `✅ 扫描请求已发送\n\n响应:\n${JSON.stringify(res.data, null, 2)}` : `❌ 失败: ${res.msg}`;
-        document.getElementById('resultText').value = resultText;
-        document.getElementById('resultModal').style.display = 'flex';
+        
+        if(res.success) {
+            alert('✅ 扫描请求已发送');
+            loadTasks(); // 刷新列表以显示日志
+        } else {
+            alert("❌ 失败: " + res.msg);
+        }
     }
 
     async function loadTasks() {
@@ -418,7 +422,7 @@
                     </div>
                     <div style="display:flex; gap:5px;">
                         ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
-                        <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList扫描">扫描</button>
+                        <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList扫描">STRM</button>
                         <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
                         <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
                     </div>
