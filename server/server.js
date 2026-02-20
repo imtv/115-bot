@@ -316,8 +316,21 @@ app.post('/api/task/:id/refresh-index', async (req, res) => {
 
     try {
         const result = await refreshOpenList(task.targetCid);
+        
+        // 【修改】将手动扫描结果追加到日志中
+        const time = formatTime();
+        if (result.success) {
+            task.log = (task.log || "") + `<br>✅ [${time}] 手动扫描: 成功`;
+        } else {
+            task.log = (task.log || "") + `<br>❌ [${time}] 手动扫描: 失败`;
+        }
+        saveTasks();
+
         res.json(result);
     } catch (e) {
+        const time = formatTime();
+        task.log = (task.log || "") + `<br>❌ [${time}] 手动扫描: 错误`;
+        saveTasks();
         res.status(500).json({ success: false, msg: e.message });
     }
 });
