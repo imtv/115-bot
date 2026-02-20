@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const path = require('path');
 const fs = require('fs');
 const service115 = require('./service115');
+const axios = require('axios');
 
 const app = express();
 const PORT = 3000;
@@ -29,7 +30,14 @@ if (!fs.existsSync(DATA_ROOT)) {
 }
 
 // --- 全局缓存 ---
-let globalSettings = { cookie: "", rootCid: "0", rootName: "根目录", adminUser: "admin", adminPass: "admin" };
+let globalSettings = { 
+    cookie: "", rootCid: "0", rootName: "根目录", 
+    adminUser: "admin", adminPass: "admin",
+    olUrl: "", // OpenList 地址
+    olToken: "", // OpenList 密码/Token
+    ol115Prefix: "", // 115侧路径前缀 (如 /videos-115)
+    olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
+};
 let globalTasks = [];
 let cronJobs = {};
 
@@ -87,7 +95,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, rootCid, rootName, adminUser, adminPass } = req.body;
+    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, ol115Prefix, olMountPrefix } = req.body;
     
     if (cookie) {
         try {
@@ -103,6 +111,10 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (rootName !== undefined) globalSettings.rootName = rootName;
     if (adminUser) globalSettings.adminUser = adminUser;
     if (adminPass) globalSettings.adminPass = adminPass;
+    if (olUrl !== undefined) globalSettings.olUrl = olUrl;
+    if (olToken !== undefined) globalSettings.olToken = olToken;
+    if (ol115Prefix !== undefined) globalSettings.ol115Prefix = ol115Prefix;
+    if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
     
     saveSettings();
     res.json({ success: true, msg: "设置已保存", data: globalSettings });
@@ -311,6 +323,20 @@ app.put('/api/task/:id/run', (req, res) => {
     res.json({ success: true, msg: "任务已启动" });
 });
 
+// 13. 手动触发 OpenList 索引 (公开)
+app.post('/api/task/:id/refresh-index', async (req, res) => {
+    const taskId = parseInt(req.params.id);
+    const task = globalTasks.find(t => t.id === taskId);
+    if (!task) return res.status(404).json({ success: false, msg: "任务不存在" });
+
+    try {
+        const result = await refreshOpenList(task.targetCid);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ success: false, msg: e.message });
+    }
+});
+
 // --- 内部功能函数 ---
 
 function startCronJob(task) {
@@ -399,6 +425,10 @@ async function processTask(task, isCron = false) {
 
             const logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${saveResult.count} 个文件`;
             updateTaskStatus(task, finalStatus, logMsg);
+
+            // 【新增】转存成功后，触发 OpenList 索引
+            refreshOpenList(task.targetCid).then(r => console.log(`[OpenList] 自动索引: ${r.msg}`)).catch(e => console.error(`[OpenList] 自动索引失败: ${e.message}`));
+
         } else if (saveResult.status === 'exists') {
             // 【新增】处理“文件已存在”的情况：检查目标文件夹是否真的有文件
             // 有时候 115 会误报，或者文件确实在别的目录。我们需要确认目标目录里有没有东西。
@@ -409,6 +439,10 @@ async function processTask(task, isCron = false) {
                 task.lastSuccessDate = todayStr;
                 task.lastSavedFileIds = checkFiles.items;
                 updateTaskStatus(task, isCron ? 'scheduled' : 'success', `[${formatTime()}] 转存成功 (秒传/已存在)`);
+                
+                // 【新增】即使是秒传，也触发一次索引，确保 OpenList 能看到
+                refreshOpenList(task.targetCid).then(r => console.log(`[OpenList] 自动索引: ${r.msg}`)).catch(e => console.error(`[OpenList] 自动索引失败: ${e.message}`));
+
             } else {
                 // 目标文件夹是空的，说明文件在别的地方（比如根目录）
                 const finalStatus = isCron ? 'scheduled' : 'failed';
@@ -422,6 +456,54 @@ async function processTask(task, isCron = false) {
     } catch (e) {
         const finalStatus = isCron ? 'scheduled' : 'error';
         updateTaskStatus(task, finalStatus, `错误: ${e.message}`);
+    }
+}
+
+// 【新增】OpenList 索引刷新逻辑
+async function refreshOpenList(cid) {
+    if (!globalSettings.olUrl) return { success: false, msg: "未配置 OpenList" };
+
+    // 1. 获取 115 完整路径
+    const pathRes = await service115.getPath(globalSettings.cookie, cid);
+    if (!pathRes.success) throw new Error("无法获取115文件夹路径");
+
+    // 构造路径字符串: /videos-115/影集/生命树
+    // pathRes.path 是一个数组 [{name: "videos-115", cid: ...}, ...]
+    // 注意：115返回的 path 数组通常不包含根目录(0)，从一级目录开始
+    let fullPath115 = "/" + pathRes.path.map(p => p.name).join("/");
+    
+    // 2. 路径映射
+    let finalPath = fullPath115;
+    if (globalSettings.ol115Prefix && globalSettings.olMountPrefix) {
+        if (fullPath115.startsWith(globalSettings.ol115Prefix)) {
+            finalPath = fullPath115.replace(globalSettings.ol115Prefix, globalSettings.olMountPrefix);
+        }
+    }
+
+    console.log(`[OpenList] 准备刷新路径: ${finalPath} (原路径: ${fullPath115})`);
+
+    // 3. 调用 OpenList 接口
+    // 假设 OpenList 接口为 POST /api/refresh，参数为 path
+    // 如果是其他接口格式，需根据实际情况调整
+    try {
+        // 去除末尾斜杠，防止 OpenList 匹配失败
+        const apiUrl = globalSettings.olUrl.replace(/\/$/, "") + "/api/refresh"; 
+        
+        // 构造请求
+        // 这里假设 OpenList 使用 query 参数或 JSON body，且可能需要 token
+        // 根据常见 OpenList 实现，尝试 POST JSON
+        const res = await axios.post(apiUrl, {
+            path: finalPath
+        }, {
+            headers: {
+                "Authorization": globalSettings.olToken ? `Bearer ${globalSettings.olToken}` : "",
+                "Content-Type": "application/json"
+            },
+            timeout: 5000
+        });
+        return { success: true, msg: "索引请求已发送", data: res.data };
+    } catch (e) {
+        throw new Error(`OpenList请求失败: ${e.message}`);
     }
 }
 
