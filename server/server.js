@@ -548,19 +548,16 @@ async function processTask(task, isCron = false) {
             // 有时候 115 会误报，或者文件确实在别的目录。我们需要确认目标目录里有没有东西。
             
             let isSuccess = false;
-            if (createdFolderId) {
-                // 如果是我们创建的文件夹，且提示已存在，说明文件已在里面
+            
+            // 【修正】无论是否创建了文件夹，都要检查最终目标目录里是否有文件
+            // 如果 115 提示已存在但拒绝转存，目标目录可能是空的，这时应该算失败
+            const checkFiles = await service115.getRecentItems(cookie, finalTargetCid, 5);
+            
+            if (checkFiles.success && checkFiles.items.length > 0) {
                 isSuccess = true;
                 task.lastSuccessDate = todayStr;
-                task.lastSavedFileIds = [createdFolderId];
-            } else {
-                // 原有逻辑：检查目标目录是否有文件
-                const checkFiles = await service115.getRecentItems(cookie, task.targetCid, 5);
-                if (checkFiles.success && checkFiles.items.length > 0) {
-                    isSuccess = true;
-                    task.lastSuccessDate = todayStr;
-                    task.lastSavedFileIds = checkFiles.items.map(i => i.id);
-                }
+                // 如果是我们创建的文件夹，记录文件夹ID；否则记录文件ID
+                task.lastSavedFileIds = createdFolderId ? [createdFolderId] : checkFiles.items.map(i => i.id);
             }
 
             if (isSuccess) {
