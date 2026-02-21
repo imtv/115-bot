@@ -387,6 +387,18 @@ app.post('/api/scan/path', async (req, res) => {
     }
 });
 
+// 15. 清空所有任务 (需管理员)
+app.delete('/api/tasks', requireAdmin, (req, res) => {
+    // 停止所有定时任务
+    Object.keys(cronJobs).forEach(id => {
+        if (cronJobs[id]) cronJobs[id].stop();
+    });
+    cronJobs = {};
+    globalTasks = [];
+    saveTasks();
+    res.json({ success: true, msg: "所有任务已清空" });
+});
+
 // --- 内部功能函数 ---
 
 function startCronJob(task) {
