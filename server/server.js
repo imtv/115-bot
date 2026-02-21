@@ -193,6 +193,10 @@ app.post('/api/task', async (req, res) => {
     if (!taskName || taskName.trim() === "") return res.status(400).json({ success: false, msg: "任务名称不能为空" });
     const cookie = globalSettings.cookie;
 
+    // 获取客户端 IP
+    let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
+    if (clientIp && clientIp.includes('::ffff:')) clientIp = clientIp.replace('::ffff:', '');
+
     try {
         const urlInfo = extractShareCode(shareUrl);
         const pass = password || urlInfo.password;
@@ -229,6 +233,7 @@ app.post('/api/task', async (req, res) => {
             targetCid: finalTargetCid,
             targetName: finalTargetName,
             cronExpression: cronExpression,
+            creatorIp: clientIp, // 保存 IP
             status: 'pending',
             log: '任务已初始化',
             lastShareHash: shareInfo.fileIds.join(','), // 首次运行时计算哈希
