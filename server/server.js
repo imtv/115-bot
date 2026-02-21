@@ -406,28 +406,25 @@ async function processTask(task, isCron = false) {
         return; 
     }
     
-    updateTaskStatus(task, 'running', `[${formatTime()}] 正在检查更新...`);
+    // 【修改】初始化日志，准备分步记录
+    let executionLog = `[${formatTime()}] 开始执行...`;
+    updateTaskStatus(task, 'running', executionLog);
     
     // --- 2. 检查分享内容更新 (通过哈希文件列表) ---
     try {
         // 注意：此处已移除自动创建文件夹的逻辑。转存将直接在 targetCid 下进行。
         let shareInfo = await service115.getShareInfo(cookie, task.shareCode, task.receiveCode);
         
+        // 【步骤1】成功读取分享链接
+        executionLog += `<br>[${formatTime()}] 成功读取分享链接: ${shareInfo.shareTitle}`;
+        updateTaskStatus(task, 'running', executionLog);
+
         const fileIds = shareInfo.fileIds;
 
-        // 统计文件和文件夹数量
-        let folderCount = 0;
-        let fileCount = 0;
-        if (shareInfo.list) {
-            shareInfo.list.forEach(item => {
-                if (item.cid) folderCount++;
-                else fileCount++;
-            });
-        }
-        
         if (!fileIds || fileIds.length === 0) {
             const finalStatus = isCron ? 'scheduled' : 'failed';
-            updateTaskStatus(task, finalStatus, `[${formatTime()}] 分享链接内无文件`);
+            executionLog += `<br>[${formatTime()}] 分享链接内无文件`;
+            updateTaskStatus(task, finalStatus, executionLog);
             return; 
         }
 
@@ -459,6 +456,10 @@ async function processTask(task, isCron = false) {
             // 【新增】成功后记录日期
             task.lastSuccessDate = todayStr;
             
+            // 【步骤2】成功保存到路径
+            executionLog += `<br>[${formatTime()}] 成功保存到${task.targetName}路径`;
+            updateTaskStatus(task, 'running', executionLog);
+            
             // 【新增】获取刚刚保存的文件ID，存入 task 以便下次删除
             // 假设按时间排序，最新的 N 个文件即为本次转存的文件
             const recent = await service115.getRecentItems(cookie, task.targetCid, saveResult.count);
@@ -471,33 +472,27 @@ async function processTask(task, isCron = false) {
                     if (item.name !== task.taskName) {
                         console.log(`[Task] 自动重命名: ${item.name} -> ${task.taskName}`);
                         await service115.renameFile(cookie, item.id, task.taskName);
+                        
+                        // 【步骤3】成功修改名称
+                        executionLog += `<br>[${formatTime()}] 成功修改文件夹名称: ${task.taskName}`;
+                        updateTaskStatus(task, 'running', executionLog);
                     }
                 }
             }
 
-            let countDesc = "";
-            if (folderCount > 0 && fileCount > 0) {
-                countDesc = `${folderCount} 个文件夹, ${fileCount} 个文件`;
-            } else if (folderCount > 0) {
-                countDesc = `${folderCount} 个文件夹`;
-            } else {
-                countDesc = `${fileCount} 个文件`;
-            }
-
-            let logMsg = saveResult.msg || `[${formatTime()}] 成功转存 ${countDesc}`;
-            
             // 【新增】等待 1 秒，确保文件系统就绪后再扫描
             await new Promise(resolve => setTimeout(resolve, 1000));
 
             // 【恢复】转存成功后，自动触发 OpenList 扫描
             try {
                 const olRes = await refreshOpenList(task.targetCid);
-                logMsg += ` [扫描: ${olRes.success ? '成功' : '失败'}]`;
+                // 【步骤4】成功扫描
+                executionLog += `<br>[${formatTime()}] 成功扫描 OpenList 生成 STRM`;
             } catch (e) {
-                logMsg += ` [扫描失败]`;
+                executionLog += `<br>[${formatTime()}] OpenList 扫描失败`;
             }
             
-            updateTaskStatus(task, finalStatus, logMsg);
+            updateTaskStatus(task, finalStatus, executionLog);
 
         } else if (saveResult.status === 'exists') {
             // 【新增】处理“文件已存在”的情况：检查目标文件夹是否真的有文件
@@ -509,29 +504,37 @@ async function processTask(task, isCron = false) {
                 task.lastSuccessDate = todayStr;
                 task.lastSavedFileIds = checkFiles.items.map(i => i.id);
                 
-                let logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
-                // 【恢复】即使是秒传，也触发一次扫描
+                executionLog += `<br>[${formatTime()}] 文件已存在(秒传)`;
+                updateTaskStatus(task, 'running', executionLog);
+                
+                // 【新增】等待 1 秒
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // 【恢复】触发扫描
                 try {
                     const olRes = await refreshOpenList(task.targetCid);
-                    logMsg += ` [扫描: ${olRes.success ? '成功' : '失败'}]`;
+                    executionLog += `<br>[${formatTime()}] 成功扫描 OpenList 生成 STRM`;
                 } catch (e) {
-                    logMsg += ` [扫描失败]`;
+                    executionLog += `<br>[${formatTime()}] OpenList 扫描失败`;
                 }
                 
-                updateTaskStatus(task, isCron ? 'scheduled' : 'success', logMsg);
+                updateTaskStatus(task, isCron ? 'scheduled' : 'success', executionLog);
 
             } else {
                 const finalStatus = isCron ? 'scheduled' : 'failed';
-                updateTaskStatus(task, finalStatus, `[${formatTime()}] ⚠️ 失败: 文件已存在于网盘其他位置(请检查根目录)，无法存入新文件夹`);
+                executionLog += `<br>[${formatTime()}] ⚠️ 失败: 文件已存在于网盘其他位置(请检查根目录)，无法存入新文件夹`;
+                updateTaskStatus(task, finalStatus, executionLog);
             }
         } else {
             const finalStatus = isCron ? 'scheduled' : 'failed'; 
-            updateTaskStatus(task, finalStatus, `转存失败: ${saveResult.msg}`);
+            executionLog += `<br>[${formatTime()}] 转存失败: ${saveResult.msg}`;
+            updateTaskStatus(task, finalStatus, executionLog);
         }
 
     } catch (e) {
         const finalStatus = isCron ? 'scheduled' : 'error';
-        updateTaskStatus(task, finalStatus, `错误: ${e.message}`);
+        executionLog += `<br>[${formatTime()}] 错误: ${e.message}`;
+        updateTaskStatus(task, finalStatus, executionLog);
     }
 }
 
