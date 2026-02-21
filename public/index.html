@@ -23,7 +23,6 @@
         .btn-edit { background: #3b82f6; color: white; border: none; }
         .btn-run { background: #10b981; color: white; border: none; } /* 新增运行按钮样式 */
         .btn-refresh { background: #8b5cf6; color: white; border: none; } /* 扫描按钮样式 */
-        .btn-admin { background: #f97316; color: white; border: none; } /* 管理按钮样式 */
         
         /* Task List */
         .task-item { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #ccc; }
@@ -54,27 +53,8 @@
         <div class="header">
             <h3>🤖 115 转存机器人</h3>
             <div style="display:flex; gap:10px;">
---- /Users/neil/Documents/115-bot/public/index.html
-+++ /Users/neil/Documents/115-bot/public/index.html
-@@ -550,9 +550,16 @@
-     
-     // 【新增】扫描百度网盘
-     async function scanBaidu() {
-+        const lastRun = localStorage.getItem('lastBaiduScanTime');
-+        if (lastRun && (Date.now() - lastRun < 3600000)) {
-+            const remaining = Math.ceil((3600000 - (Date.now() - lastRun)) / 60000);
-+            return alert(`⏳ 操作冷却中，请等待 ${remaining} 分钟后再试`);
-+        }
-+
-         if(!confirm('确定要扫描 OpenList 的 /百度网盘 路径吗？')) return;
-         const res = await request('/scan/path', 'POST', { path: '/百度网盘' });
-         if(res.success) {
-+            localStorage.setItem('lastBaiduScanTime', Date.now());
-             alert('✅ 扫描请求已发送');
-         } else {
-             alert("❌ 失败: " + res.msg);
                 <button onclick="scanBaidu()" class="btn-refresh" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">扫描百度网盘</button>
-                <button onclick="openAdminModal()" class="btn-admin" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⚙️ 管理后台</button>
+                <button onclick="openAdminModal()" class="btn-outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⚙️ 管理后台</button>
             </div>
         </div>
 
@@ -83,13 +63,6 @@
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <h4 style="margin:0;">🔧 管理员设置</h4>
                 <button onclick="logoutAdmin()" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">退出登录</button>
-            </div>
-            <div style="margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-                <label style="font-size:0.8rem;">通用设置</label>
-                <div class="row" style="align-items:center; margin-top:5px;">
-                    <input type="checkbox" id="enableCronSetting" style="width:auto; margin:0;">
-                    <span style="font-size:0.85rem; margin-left:5px;">启用新建任务定时检查功能</span>
-                </div>
             </div>
             <div style="margin-bottom: 10px;">
                 <label style="font-size:0.8rem;">115 Cookie</label>
@@ -179,7 +152,7 @@
                 </div>
             </div>
 
-            <div id="createCronSection" style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
+            <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
                 <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
                     <span>⏱️ 每天定时检查 (小时)</span>
                     <span style="font-weight:400; font-size:0.8rem; color:#0284c7; cursor:pointer;" onclick="clearCron('create')">[ 重置/仅一次 ]</span>
@@ -357,11 +330,6 @@
             document.getElementById('cookieInput').value = res.data.cookie || '';
             
             catSettings = res.data; // 缓存所有数据
-            
-            const enableCron = res.data.enableCron !== false;
-            document.getElementById('enableCronSetting').checked = enableCron;
-            toggleCronSection(enableCron);
-
             document.getElementById('catTvName').value = res.data.catTvName || '未设置';
             document.getElementById('catMovieName').value = res.data.catMovieName || '未设置';
             document.getElementById('catVarietyName').value = res.data.catVarietyName || '未设置';
@@ -384,7 +352,6 @@
         const olUrl = document.getElementById('olUrl').value;
         const olToken = document.getElementById('olToken').value;
         const olMountPrefix = document.getElementById('olMountPrefix').value;
-        const enableCron = document.getElementById('enableCronSetting').checked;
         
         // 构造分类配置
         const cats = {
@@ -395,16 +362,8 @@
             catOtherCid: catSettings.catOtherCid, catOtherName: catSettings.catOtherName,
         };
 
-        const res = await request('/settings', 'POST', { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix, enableCron });
-        if(res.success) {
-            alert("设置已保存");
-            toggleCronSection(enableCron);
-        } else alert(res.msg);
-    }
-
-    function toggleCronSection(show) {
-        const el = document.getElementById('createCronSection');
-        if(el) el.style.display = show ? 'block' : 'none';
+        const res = await request('/settings', 'POST', { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix });
+        if(res.success) alert("设置已保存"); else alert(res.msg);
     }
 
     // --- Cron 工具 ---
@@ -514,12 +473,12 @@
                             <span>⏱️ ${t.cronExpression ? t.cronExpression : '手动'}</span>
                         </div>
                     </div>
-                    ${adminToken ? `<div style="display:flex; gap:5px;">
+                    <div style="display:flex; gap:5px;">
                         ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
                         <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList扫描">扫描</button>
                         <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
                         <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
-                    </div>` : ''}
+                    </div>
                 </div>
                 <div class="task-log">${t.log || '等待中...'}</div>
             </div>
