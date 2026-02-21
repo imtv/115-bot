@@ -182,7 +182,6 @@ app.post('/api/task', async (req, res) => {
     const { taskName, shareUrl, password, category, cronExpression } = req.body;
     
     if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
-    if (!taskName || taskName.trim() === "") return res.status(400).json({ success: false, msg: "任务名称不能为空" });
     const cookie = globalSettings.cookie;
 
     try {
@@ -192,6 +191,9 @@ app.post('/api/task', async (req, res) => {
         const shareInfo = await service115.getShareInfo(cookie, urlInfo.code, pass);
 
         let finalTaskName = taskName;
+        if (!finalTaskName || finalTaskName.trim() === "") {
+            finalTaskName = shareInfo.shareTitle; 
+        }
         
         // 根据分类获取目标目录
         let finalTargetCid = "0";
@@ -469,24 +471,6 @@ async function processTask(task, isCron = false) {
                     const item = recent.items[0];
                     if (item.name !== task.taskName) {
                         console.log(`[Task] 自动重命名: ${item.name} -> ${task.taskName}`);
-                        
-                        // 【新增】检查是否存在同名文件/文件夹，若存在则删除旧的
-                        try {
-                            const listRes = await service115.getFolderList(cookie, task.targetCid, 1000);
-                            if (listRes.success && listRes.list) {
-                                const existing = listRes.list.find(f => f.name === task.taskName);
-                                if (existing) {
-                                    console.log(`[Task] 发现同名文件/文件夹 [${existing.name}] (ID: ${existing.id})，正在删除旧文件...`);
-                                    await service115.deleteFiles(cookie, [existing.id]);
-                                    executionLog += `<br>[${formatTime()}] 删除旧同名文件: ${task.taskName}`;
-                                    updateTaskStatus(task, 'running', executionLog);
-                                    await new Promise(resolve => setTimeout(resolve, 1000)); // 等待删除生效
-                                }
-                            }
-                        } catch (e) {
-                            console.warn("[Task] 检查同名文件失败:", e);
-                        }
-
                         await service115.renameFile(cookie, item.id, task.taskName);
                         
                         // 【步骤3】成功修改名称
@@ -646,7 +630,7 @@ function extractShareCode(url) {
 
 function formatTime() {
     const d = new Date();
-    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 }
 
 initSystem();
