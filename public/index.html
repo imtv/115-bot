@@ -54,6 +54,25 @@
         <div class="header">
             <h3>🤖 115 转存机器人</h3>
             <div style="display:flex; gap:10px;">
+--- /Users/neil/Documents/115-bot/public/index.html
++++ /Users/neil/Documents/115-bot/public/index.html
+@@ -550,9 +550,16 @@
+     
+     // 【新增】扫描百度网盘
+     async function scanBaidu() {
++        const lastRun = localStorage.getItem('lastBaiduScanTime');
++        if (lastRun && (Date.now() - lastRun < 3600000)) {
++            const remaining = Math.ceil((3600000 - (Date.now() - lastRun)) / 60000);
++            return alert(`⏳ 操作冷却中，请等待 ${remaining} 分钟后再试`);
++        }
++
+         if(!confirm('确定要扫描 OpenList 的 /百度网盘 路径吗？')) return;
+         const res = await request('/scan/path', 'POST', { path: '/百度网盘' });
+         if(res.success) {
++            localStorage.setItem('lastBaiduScanTime', Date.now());
+             alert('✅ 扫描请求已发送');
+         } else {
+             alert("❌ 失败: " + res.msg);
                 <button onclick="scanBaidu()" class="btn-refresh" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">扫描百度网盘</button>
                 <button onclick="openAdminModal()" class="btn-admin" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⚙️ 管理后台</button>
             </div>
