@@ -127,11 +127,11 @@
         <div class="card">
             <h3>➕ 新建智能任务</h3>
             <div style="font-size:0.85rem; color:#666; margin-bottom:12px; background:#f3f4f6; padding:8px; border-radius:6px;">
-                💡 <b>自动命名</b>：留空任务名称，系统将自动获取分享标题作为任务名，**不会自动新建文件夹**。
+                💡 <b>提示</b>：任务名称为必填项，用于重命名转存后的文件夹。
             </div>
             
             <div class="row">
-                <input type="text" id="taskName" placeholder="任务名称 (留空则自动命名)">
+                <input type="text" id="taskName" placeholder="任务名称 (必填)">
             </div>
             
             <input type="text" id="shareUrl" placeholder="分享链接 (https://115.com/s/...)">
@@ -403,6 +403,7 @@
             category: category,
             cronExpression: cronExpression
         };
+        if(!payload.taskName) return alert("任务名称不能为空");
         if(!payload.shareUrl) return alert("分享链接不能为空");
         const res = await request('/task', 'POST', payload);
         if(res.success) {
@@ -460,7 +461,9 @@
             <div class="task-item ${t.status}">
                 <div class="task-header">
                     <div>
-                        <a href="${t.shareUrl || '#'}" target="_blank" class="task-link" title="上次成功: ${t.lastSuccessDate || '无'}">${t.taskName || '未命名'} 🔗</a>
+                        <a href="${t.shareUrl || '#'}" target="_blank" class="task-link" title="上次成功: ${t.lastSuccessDate || '无'}">
+                            ${t.status === 'scheduled' ? '⏳' : (t.status==='success'?'✅':'▶️')} ${t.taskName || '未命名'} 🔗
+                        </a>
                         <div class="task-meta">
                             <span>⏱️ ${t.cronExpression ? t.cronExpression : '手动'}</span>
                         </div>
@@ -472,7 +475,7 @@
                         <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
                     </div>
                 </div>
-                <div class="task-log">${t.status === 'scheduled' ? '⏳' : (t.status==='success'?'✅':'▶️')} ${t.log || '等待中...'}</div>
+                <div class="task-log">${t.log || '等待中...'}</div>
             </div>
         `).join('');
         document.getElementById('taskList').innerHTML = html || '<div style="text-align:center; color:#999;">暂无任务</div>';
