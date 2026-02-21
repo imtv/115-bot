@@ -130,12 +130,15 @@
                 💡 <b>提示</b>：任务名称为必填项，用于重命名转存后的文件夹。
             </div>
             
+            <label style="font-size:0.8rem; color:#666;">任务名称</label>
             <div class="row">
                 <input type="text" id="taskName" placeholder="任务名称 (必填)">
             </div>
             
+            <label style="font-size:0.8rem; color:#666;">分享链接</label>
             <input type="text" id="shareUrl" placeholder="分享链接 (https://115.com/s/...)">
             
+            <label style="font-size:0.8rem; color:#666;">提取码</label>
             <input type="text" id="accessCode" placeholder="提取码 (可选)">
 
             <div style="margin-bottom: 15px;">
@@ -145,7 +148,7 @@
                     <label><input type="radio" name="category" value="movie" style="width:auto;"> 🎬 电影</label>
                     <label><input type="radio" name="category" value="variety" style="width:auto;"> 🎤 综艺</label>
                     <label><input type="radio" name="category" value="anime" style="width:auto;"> 🌸 动漫</label>
-                    <label><input type="radio" name="category" value="other" style="width:auto;" checked> 📦 其他</label>
+                    <label><input type="radio" name="category" value="other" style="width:auto;"> 📦 其他</label>
                 </div>
             </div>
 
@@ -395,12 +398,14 @@
 
     async function createTask() {
         const cronExpression = updateCronPreview('create');
-        const category = document.querySelector('input[name="category"]:checked').value;
+        const categoryInput = document.querySelector('input[name="category"]:checked');
+        if(!categoryInput) return alert("请选择保存分类");
+        
         const payload = {
             taskName: document.getElementById('taskName').value,
             shareUrl: document.getElementById('shareUrl').value,
             password: document.getElementById('accessCode').value,
-            category: category,
+            category: categoryInput.value,
             cronExpression: cronExpression
         };
         if(!payload.taskName) return alert("任务名称不能为空");
