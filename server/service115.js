@@ -46,9 +46,9 @@ class Service115 {
                     success: true,
                     path: res.data.path,
                     list: res.data.data.map(i => ({
-                        id: i.cid || i.fid,
+                        id: i.fid || i.cid,
                         name: i.n,
-                        type: i.cid ? 'folder' : 'file',
+                        type: i.fid ? 'file' : 'folder',
                         cid: i.cid,
                         fid: i.fid,
                         size: i.s,
@@ -193,13 +193,33 @@ class Service115 {
                 params: { aid: 1, cid: cid, o: "user_ptime", asc: 0, offset: 0, show_dir: 1, limit: limit, type: 0, format: "json" }
             });
             if (res.data.state && res.data.data) {
-                // 提取 ID (文件用 fid, 文件夹用 cid)
-                const items = res.data.data.map(item => item.fid || item.cid);
+                // 提取详细信息
+                const items = res.data.data.map(item => ({
+                    id: item.fid || item.cid,
+                    isFolder: !item.fid,
+                    name: item.n
+                }));
                 return { success: true, items };
             }
             return { success: false, items: [] };
         } catch (e) {
             return { success: false, items: [] };
+        }
+    }
+
+    // 10. 重命名文件/文件夹
+    async renameFile(cookie, fileId, newName) {
+        const postData = qs.stringify({
+            [`files_new_name[${fileId}]`]: newName
+        });
+        try {
+            const res = await axios.post("https://webapi.115.com/files/batch_rename", postData, {
+                headers: this._getHeaders(cookie)
+            });
+            if (res.data.state) return { success: true };
+            return { success: false, msg: res.data.error || "重命名失败" };
+        } catch (e) {
+            return { success: false, msg: "重命名API异常: " + e.message };
         }
     }
 
