@@ -137,7 +137,7 @@
                 💡 <b>提示</b>：任务名称为必填项，用于重命名转存后的文件夹。
             </div>
             
-            <label style="font-size:0.8rem; color:#666;">任务名称</label>
+            <label style="font-size:0.8rem; color:#666;">视频名称</label>
             <div class="row">
                 <input type="text" id="taskName" placeholder="必填">
             </div>
@@ -178,6 +178,7 @@
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <h3 style="margin:0;">📋 任务队列</h3>
+                <button id="btnClearAll" onclick="clearAllTasks()" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem; display:none;">🗑️ 清空队列</button>
             </div>
             <div id="taskList"></div>
         </div>
@@ -497,6 +498,11 @@
         const tasks = await request('/tasks');
         allTasks = tasks; // 缓存
         const isAdmin = !!localStorage.getItem('adminToken');
+        
+        // 控制清空按钮显示
+        const btnClear = document.getElementById('btnClearAll');
+        if(btnClear) btnClear.style.display = isAdmin ? 'block' : 'none';
+
         const html = tasks.map(t => `
             <div class="task-item ${t.status}">
                 <div class="task-header">
@@ -525,6 +531,17 @@
 
     async function deleteTask(id) {
         if(confirm('确定删除?')) { await request(`/task/${id}`, 'DELETE'); loadTasks(); }
+    }
+
+    async function clearAllTasks() {
+        if(!confirm('⚠️ 警告：确定要清空所有任务吗？\n此操作将删除所有任务记录并停止相关定时器，且不可恢复！')) return;
+        const res = await request('/tasks', 'DELETE');
+        if(res.success) {
+            alert('✅ 已清空所有任务');
+            loadTasks();
+        } else {
+            alert("❌ 操作失败: " + res.msg);
+        }
     }
 
     // --- 编辑功能 ---
