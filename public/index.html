@@ -52,10 +52,7 @@
     <div class="app-container">
         <div class="header">
             <h3>🤖 115 转存机器人</h3>
-            <div style="display:flex; gap:10px;">
-                <button onclick="scanBaidu()" class="btn-refresh" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">扫描百度网盘</button>
-                <button onclick="openAdminModal()" class="btn-outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⚙️ 管理后台</button>
-            </div>
+            <button onclick="openAdminModal()" class="btn-outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⚙️ 管理后台</button>
         </div>
 
         <!-- 管理员设置面板 (默认隐藏) -->
@@ -68,41 +65,14 @@
                 <label style="font-size:0.8rem;">115 Cookie</label>
                 <input type="text" id="cookieInput" placeholder="输入 Cookie (UID/CID/SEID...)">
             </div>
-            
-            <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
-                <label style="font-size:0.8rem; font-weight:bold;">📂 分类保存路径设置</label>
-                
-                <div style="margin-top:5px;"><label style="font-size:0.75rem;">📺 电视剧</label></div>
+            <div style="margin-bottom: 10px;">
+                <label style="font-size:0.8rem;">默认根目录 (朋友添加任务时默认存到这里)</label>
                 <div style="display:flex; gap:5px;">
-                    <input type="text" id="catTvName" readonly style="background:#eee; margin-bottom:5px;">
-                    <button onclick="openFolderPicker('tv')" class="btn-outline" style="width:60px; margin-bottom:5px;">选择</button>
-                </div>
-                
-                <div style="margin-top:5px;"><label style="font-size:0.75rem;">🎬 电影</label></div>
-                <div style="display:flex; gap:5px;">
-                    <input type="text" id="catMovieName" readonly style="background:#eee; margin-bottom:5px;">
-                    <button onclick="openFolderPicker('movie')" class="btn-outline" style="width:60px; margin-bottom:5px;">选择</button>
-                </div>
-
-                <div style="margin-top:5px;"><label style="font-size:0.75rem;">🎤 综艺</label></div>
-                <div style="display:flex; gap:5px;">
-                    <input type="text" id="catVarietyName" readonly style="background:#eee; margin-bottom:5px;">
-                    <button onclick="openFolderPicker('variety')" class="btn-outline" style="width:60px; margin-bottom:5px;">选择</button>
-                </div>
-
-                <div style="margin-top:5px;"><label style="font-size:0.75rem;">🌸 动漫</label></div>
-                <div style="display:flex; gap:5px;">
-                    <input type="text" id="catAnimeName" readonly style="background:#eee; margin-bottom:5px;">
-                    <button onclick="openFolderPicker('anime')" class="btn-outline" style="width:60px; margin-bottom:5px;">选择</button>
-                </div>
-
-                <div style="margin-top:5px;"><label style="font-size:0.75rem;">📦 其他</label></div>
-                <div style="display:flex; gap:5px;">
-                    <input type="text" id="catOtherName" readonly style="background:#eee; margin-bottom:5px;">
-                    <button onclick="openFolderPicker('other')" class="btn-outline" style="width:60px; margin-bottom:5px;">选择</button>
+                    <input type="text" id="rootPathName" readonly style="background:#eee;">
+                    <input type="hidden" id="rootCid">
+                    <button onclick="openFolderPicker(false, true)" class="btn-outline" style="width:80px;">选择</button>
                 </div>
             </div>
-
             <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
                 <label style="font-size:0.8rem;">OpenList 集成 (手动扫描)</label>
                 <input type="text" id="olUrl" placeholder="OpenList 地址 (如 http://192.168.1.5:5244)">
@@ -127,25 +97,21 @@
         <div class="card">
             <h3>➕ 新建智能任务</h3>
             <div style="font-size:0.85rem; color:#666; margin-bottom:12px; background:#f3f4f6; padding:8px; border-radius:6px;">
-                💡 <b>提示</b>：任务名称为必填项，用于重命名转存后的文件夹。
+                💡 <b>自动命名</b>：留空任务名称，系统将自动获取分享标题作为任务名，**不会自动新建文件夹**。
             </div>
             
             <div class="row">
-                <input type="text" id="taskName" placeholder="任务名称 (必填)">
+                <input type="text" id="taskName" placeholder="任务名称 (留空则自动命名)">
             </div>
             
             <input type="text" id="shareUrl" placeholder="分享链接 (https://115.com/s/...)">
             
-            <input type="text" id="accessCode" placeholder="提取码 (可选)">
-
-            <div style="margin-bottom: 15px;">
-                <label style="font-size:0.8rem; color:#666; display:block; margin-bottom:5px;">保存分类 (自动重命名文件夹)</label>
-                <div style="display:flex; gap:15px; flex-wrap:wrap;">
-                    <label><input type="radio" name="category" value="tv" style="width:auto;"> 📺 电视剧</label>
-                    <label><input type="radio" name="category" value="movie" style="width:auto;"> 🎬 电影</label>
-                    <label><input type="radio" name="category" value="variety" style="width:auto;"> 🎤 综艺</label>
-                    <label><input type="radio" name="category" value="anime" style="width:auto;"> 🌸 动漫</label>
-                    <label><input type="radio" name="category" value="other" style="width:auto;" checked> 📦 其他</label>
+            <div class="row">
+                <input type="text" id="accessCode" placeholder="提取码 (可选)">
+                <div style="display:flex; gap:5px; width: 100%;">
+                    <input type="text" id="targetPath" placeholder="默认根目录" readonly style="background:#eee;">
+                    <input type="hidden" id="targetCid" value="">
+                    <button onclick="openFolderPicker(false)" class="btn-outline" style="width:70px;">选择目录</button>
                 </div>
             </div>
 
@@ -189,6 +155,15 @@
             <label style="font-size:0.8rem; color:#666;">提取码</label>
             <input type="text" id="editAccessCode" placeholder="提取码 (可选)">
             
+            <label style="font-size:0.8rem; color:#666;">保存位置</label>
+            <div class="row" style="margin-bottom:10px;">
+                <div style="display:flex; gap:5px; width: 100%;">
+                    <input type="text" id="editTargetPath" readonly style="background:#eee; margin-bottom:0;">
+                    <input type="hidden" id="editTargetCid">
+                    <button onclick="openFolderPicker(true)" class="btn-outline" style="width:70px; margin-bottom:0;">修改</button>
+                </div>
+            </div>
+
             <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
                 <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
                     <span>⏱️ 每天定时检查 (小时)</span>
@@ -257,8 +232,8 @@
 <script>
     let adminToken = localStorage.getItem('adminToken');
     let curCid = "0", curPathName = "根目录";
-    let settingCatKey = null; // 当前正在设置哪个分类的路径
-    let catSettings = {}; // 缓存分类配置
+    let isEditMode = false; // 标记当前文件夹选择器是为编辑服务的
+    let isSettingRoot = false; // 标记是否正在设置全局根目录
     let allTasks = [];      // 缓存任务列表用于编辑回显
     let selectedFiles = new Set(); // 选中的文件ID集合
 
@@ -325,14 +300,8 @@
         const res = await request('/settings');
         if(res.success && res.data) {
             document.getElementById('cookieInput').value = res.data.cookie || '';
-            
-            catSettings = res.data; // 缓存所有数据
-            document.getElementById('catTvName').value = res.data.catTvName || '未设置';
-            document.getElementById('catMovieName').value = res.data.catMovieName || '未设置';
-            document.getElementById('catVarietyName').value = res.data.catVarietyName || '未设置';
-            document.getElementById('catAnimeName').value = res.data.catAnimeName || '未设置';
-            document.getElementById('catOtherName').value = res.data.catOtherName || '未设置';
-
+            document.getElementById('rootCid').value = res.data.rootCid || '0';
+            document.getElementById('rootPathName').value = res.data.rootName || '根目录';
             document.getElementById('setAdminUser').value = res.data.adminUser || 'admin';
             document.getElementById('setAdminPass').value = res.data.adminPass || 'admin';
             document.getElementById('olUrl').value = res.data.olUrl || '';
@@ -343,6 +312,8 @@
 
     async function saveSettings() {
         const cookie = document.getElementById('cookieInput').value;
+        const rootCid = document.getElementById('rootCid').value;
+        const rootName = document.getElementById('rootPathName').value;
         const adminUser = document.getElementById('setAdminUser').value;
         const adminPass = document.getElementById('setAdminPass').value;
         
@@ -350,16 +321,7 @@
         const olToken = document.getElementById('olToken').value;
         const olMountPrefix = document.getElementById('olMountPrefix').value;
         
-        // 构造分类配置
-        const cats = {
-            catTvCid: catSettings.catTvCid, catTvName: catSettings.catTvName,
-            catMovieCid: catSettings.catMovieCid, catMovieName: catSettings.catMovieName,
-            catVarietyCid: catSettings.catVarietyCid, catVarietyName: catSettings.catVarietyName,
-            catAnimeCid: catSettings.catAnimeCid, catAnimeName: catSettings.catAnimeName,
-            catOtherCid: catSettings.catOtherCid, catOtherName: catSettings.catOtherName,
-        };
-
-        const res = await request('/settings', 'POST', { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix });
+        const res = await request('/settings', 'POST', { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olMountPrefix });
         if(res.success) alert("设置已保存"); else alert(res.msg);
     }
 
@@ -395,15 +357,14 @@
 
     async function createTask() {
         const cronExpression = updateCronPreview('create');
-        const category = document.querySelector('input[name="category"]:checked').value;
         const payload = {
             taskName: document.getElementById('taskName').value,
             shareUrl: document.getElementById('shareUrl').value,
             password: document.getElementById('accessCode').value,
-            category: category,
+            targetCid: document.getElementById('targetCid').value,
+            targetName: document.getElementById('targetPath').value,
             cronExpression: cronExpression
         };
-        if(!payload.taskName) return alert("任务名称不能为空");
         if(!payload.shareUrl) return alert("分享链接不能为空");
         const res = await request('/task', 'POST', payload);
         if(res.success) {
@@ -461,10 +422,10 @@
             <div class="task-item ${t.status}">
                 <div class="task-header">
                     <div>
-                        <a href="${t.shareUrl || '#'}" target="_blank" class="task-link" title="上次成功: ${t.lastSuccessDate || '无'}">
-                            ${t.status === 'scheduled' ? '⏳' : (t.status==='success'?'✅':'▶️')} ${t.taskName || '未命名'} 🔗
-                        </a>
+                        <a href="${t.shareUrl || '#'}" target="_blank" class="task-link" title="上次成功: ${t.lastSuccessDate || '无'}">${t.taskName || '未命名'} 🔗</a>
                         <div class="task-meta">
+                            <span>📂 ${t.targetName}</span>
+                            <span>|</span>
                             <span>⏱️ ${t.cronExpression ? t.cronExpression : '手动'}</span>
                         </div>
                     </div>
@@ -475,7 +436,7 @@
                         <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
                     </div>
                 </div>
-                <div class="task-log">${t.log || '等待中...'}</div>
+                <div class="task-log">${t.status === 'scheduled' ? '⏳' : (t.status==='success'?'✅':'▶️')} ${t.log || '等待中...'}</div>
             </div>
         `).join('');
         document.getElementById('taskList').innerHTML = html || '<div style="text-align:center; color:#999;">暂无任务</div>';
@@ -495,6 +456,8 @@
         document.getElementById('editTaskName').value = task.taskName || '';
         document.getElementById('editShareUrl').value = task.shareUrl || '';
         document.getElementById('editAccessCode').value = task.receiveCode || '';
+        document.getElementById('editTargetCid').value = task.targetCid || '0';
+        document.getElementById('editTargetPath').value = task.targetName || '根目录';
 
         // 还原 Cron
         if (task.cronExpression) {
@@ -518,6 +481,8 @@
             taskName: document.getElementById('editTaskName').value,
             shareUrl: document.getElementById('editShareUrl').value,
             password: document.getElementById('editAccessCode').value,
+            targetCid: document.getElementById('editTargetCid').value,
+            targetName: document.getElementById('editTargetPath').value,
             cronExpression: cronExp
         };
 
@@ -533,8 +498,9 @@
 
     // --- 目录选择 ---
 
-    async function openFolderPicker(catKey) {
-        settingCatKey = catKey;
+    async function openFolderPicker(editMode, settingRoot = false) {
+        isEditMode = editMode;
+        isSettingRoot = settingRoot;
         document.getElementById('folderModal').style.display = 'flex';
         // 不传参数，让后端使用默认配置的根目录
         loadFolders(); 
@@ -627,18 +593,17 @@
     }
 
     function confirmFolder() {
-        if (settingCatKey) {
-            // 更新缓存对象
-            catSettings[`cat${capitalize(settingCatKey)}Cid`] = curCid;
-            catSettings[`cat${capitalize(settingCatKey)}Name`] = curPathName;
-            // 更新UI
-            document.getElementById(`cat${capitalize(settingCatKey)}Name`).value = curPathName;
+        if (isEditMode) {
+            document.getElementById('editTargetPath').value = curPathName;
+            document.getElementById('editTargetCid').value = curCid;
+        } else if (isSettingRoot) {
+            document.getElementById('rootPathName').value = curPathName;
+            document.getElementById('rootCid').value = curCid;
+        } else {
+            document.getElementById('targetPath').value = curPathName;
+            document.getElementById('targetCid').value = curCid;
         }
         document.getElementById('folderModal').style.display = 'none';
-    }
-
-    function capitalize(s) {
-        return s.charAt(0).toUpperCase() + s.slice(1);
     }
 </script>
 </body>
