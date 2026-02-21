@@ -153,11 +153,13 @@
             </div>
 
             <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
-                <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
-                    <span>⏱️ 每天定时检查 (小时)</span>
-                    <span style="font-weight:400; font-size:0.8rem; color:#0284c7; cursor:pointer;" onclick="clearCron('create')">[ 重置/仅一次 ]</span>
-                </label>
-                <div style="margin-top: 10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <label style="font-size:0.9rem; font-weight:700; color:#0369a1; margin:0;">⏱️ 定时检查更新</label>
+                    <label style="font-size:0.85rem; color:#0284c7; display:flex; align-items:center; gap:5px; cursor:pointer;">
+                        <input type="checkbox" id="enableCron" onchange="toggleCronInput()" style="width:auto; margin:0;"> 启用定时
+                    </label>
+                </div>
+                <div id="cronInputBox" style="display:none;">
                     <input type="text" id="cron_hours" placeholder="例如: 8,20 (代表每天8点和20点)" oninput="updateCronPreview('create')">
                     <div class="cron-preview" id="cronResult">执行策略: 仅一次 (立即执行)</div>
                 </div>
@@ -367,6 +369,11 @@
     }
 
     // --- Cron 工具 ---
+    function toggleCronInput() {
+        const enabled = document.getElementById('enableCron').checked;
+        document.getElementById('cronInputBox').style.display = enabled ? 'block' : 'none';
+    }
+
     function updateCronPreview(mode) {
         const inputId = mode === 'edit' ? 'edit_cron_hours' : 'cron_hours';
         const resultId = mode === 'edit' ? 'editCronResult' : 'cronResult';
@@ -397,7 +404,8 @@
     // --- 任务操作 ---
 
     async function createTask() {
-        const cronExpression = updateCronPreview('create');
+        const enableCron = document.getElementById('enableCron').checked;
+        const cronExpression = enableCron ? updateCronPreview('create') : '';
         const categoryInput = document.querySelector('input[name="category"]:checked');
         if(!categoryInput) return alert("请选择保存分类");
         
@@ -462,6 +470,7 @@
     async function loadTasks() {
         const tasks = await request('/tasks');
         allTasks = tasks; // 缓存
+        const isAdmin = !!localStorage.getItem('adminToken');
         const html = tasks.map(t => `
             <div class="task-item ${t.status}">
                 <div class="task-header">
@@ -474,10 +483,12 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:5px;">
-                        ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
-                        <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList扫描">扫描</button>
-                        <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
-                        <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
+                        ${isAdmin ? `
+                            ${t.status !== 'running' ? `<button onclick="runTaskNow(${t.id})" class="btn-run" style="width:auto; padding:4px 10px; font-size:0.8rem;">执行</button>` : ''}
+                            <button onclick="refreshIndex(${t.id})" class="btn-refresh" style="width:auto; padding:4px 10px; font-size:0.8rem;" title="通知OpenList扫描">扫描</button>
+                            <button onclick="openEditModal(${t.id})" class="btn-edit" style="width:auto; padding:4px 10px; font-size:0.8rem;">编辑</button>
+                            <button onclick="deleteTask(${t.id})" class="btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;">删除</button>
+                        ` : ''}
                     </div>
                 </div>
                 <div class="task-log">${t.log || '等待中...'}</div>
