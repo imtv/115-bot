@@ -45,6 +45,7 @@ let globalSettings = {
 };
 let globalTasks = [];
 let cronJobs = {};
+let lastBaiduScanTime = 0;
 
 // 初始化：恢复之前的 Cron 任务
 function initSystem() {
@@ -359,6 +360,17 @@ app.post('/api/task/:id/refresh-index', async (req, res) => {
 app.post('/api/scan/path', async (req, res) => {
     const { path } = req.body;
     if (!path) return res.status(400).json({ success: false, msg: "路径不能为空" });
+
+    // 百度网盘扫描频率限制 (1小时)
+    if (path === '/百度网盘') {
+        const now = Date.now();
+        const cooldown = 3600 * 1000;
+        if (now - lastBaiduScanTime < cooldown) {
+            const waitMin = Math.ceil((cooldown - (now - lastBaiduScanTime)) / 60000);
+            return res.status(429).json({ success: false, msg: `百度网盘扫描冷却中，请等待 ${waitMin} 分钟后再试` });
+        }
+        lastBaiduScanTime = now;
+    }
 
     try {
         const result = await executeOpenListScan(path);
