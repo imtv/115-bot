@@ -41,7 +41,8 @@ let globalSettings = {
     adminUser: "admin", adminPass: "admin",
     olUrl: "", // OpenList 地址
     olToken: "", // OpenList Token
-    olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
+    olMountPrefix: "", // OpenList侧挂载前缀 (如 /115网盘)
+    enableCronFeature: false // 【新增】定时功能全局开关，默认关闭
 };
 let globalTasks = [];
 let cronJobs = {};
@@ -99,9 +100,14 @@ app.get('/api/settings', requireAdmin, (req, res) => {
     res.json({ success: true, data: globalSettings });
 });
 
+// 【新增】获取公开设置 (无需管理员权限，用于前端判断UI显示)
+app.get('/api/public-settings', (req, res) => {
+    res.json({ success: true, enableCronFeature: !!globalSettings.enableCronFeature });
+});
+
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix } = req.body;
+    const { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix, enableCronFeature } = req.body;
     
     if (cookie) {
         try {
@@ -123,6 +129,7 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (olUrl !== undefined) globalSettings.olUrl = olUrl;
     if (olToken !== undefined) globalSettings.olToken = olToken;
     if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
+    if (enableCronFeature !== undefined) globalSettings.enableCronFeature = enableCronFeature;
     
     saveSettings();
     res.json({ success: true, msg: "设置已保存", data: globalSettings });
