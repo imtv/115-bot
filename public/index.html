@@ -68,6 +68,13 @@
                 <label style="font-size:0.8rem;">115 Cookie</label>
                 <input type="text" id="cookieInput" placeholder="输入 Cookie (UID/CID/SEID...)">
             </div>
+
+            <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+                <label style="font-size:0.8rem; font-weight:bold;">⚙️ 功能开关</label>
+                <div style="margin-top:5px;">
+                    <label><input type="checkbox" id="setEnableCronFeature" style="width:auto;"> 启用定时任务功能 (全局)</label>
+                </div>
+            </div>
             
             <div style="margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 10px;">
                 <label style="font-size:0.8rem; font-weight:bold;">📂 分类保存路径设置</label>
@@ -152,7 +159,7 @@
                 </div>
             </div>
 
-            <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
+            <div id="createTaskCronSection" style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd; display:none;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <label style="font-size:0.9rem; font-weight:700; color:#0369a1; margin:0;">⏱️ 定时检查更新</label>
                     <label style="font-size:0.85rem; color:#0284c7; display:flex; align-items:center; gap:5px; cursor:pointer;">
@@ -194,7 +201,7 @@
             <label style="font-size:0.8rem; color:#666;">提取码</label>
             <input type="text" id="editAccessCode" placeholder="提取码 (可选)">
             
-            <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd;">
+            <div id="editTaskCronSection" style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bae6fd; display:none;">
                 <label style="font-size:0.9rem; font-weight:700; color:#0369a1; display:flex; justify-content:space-between;">
                     <span>⏱️ 每天定时检查 (小时)</span>
                     <span style="font-weight:400; font-size:0.8rem; color:#0284c7; cursor:pointer;" onclick="clearCron('edit')">[ 重置 ]</span>
@@ -269,6 +276,7 @@
 
     // 初始化
     (function init() {
+        loadPublicSettings(); // 加载公开配置(决定UI显示)
         if(adminToken) {
             document.getElementById('adminPanel').style.display = 'block';
             loadSettings();
@@ -276,6 +284,17 @@
         loadTasks();
         setInterval(loadTasks, 5000);
     })();
+
+    // 【新增】加载公开配置，控制定时功能UI显示
+    async function loadPublicSettings() {
+        const res = await request('/public-settings');
+        if(res.success) {
+            const show = res.enableCronFeature;
+            const display = show ? 'block' : 'none';
+            document.getElementById('createTaskCronSection').style.display = display;
+            document.getElementById('editTaskCronSection').style.display = display;
+        }
+    }
 
     async function request(endpoint, method='GET', body=null) {
         const headers = { 'Content-Type': 'application/json' };
@@ -330,6 +349,7 @@
         const res = await request('/settings');
         if(res.success && res.data) {
             document.getElementById('cookieInput').value = res.data.cookie || '';
+            document.getElementById('setEnableCronFeature').checked = !!res.data.enableCronFeature;
             
             catSettings = res.data; // 缓存所有数据
             document.getElementById('catTvName').value = res.data.catTvName || '未设置';
@@ -350,6 +370,7 @@
         const cookie = document.getElementById('cookieInput').value;
         const adminUser = document.getElementById('setAdminUser').value;
         const adminPass = document.getElementById('setAdminPass').value;
+        const enableCronFeature = document.getElementById('setEnableCronFeature').checked;
         
         const olUrl = document.getElementById('olUrl').value;
         const olToken = document.getElementById('olToken').value;
@@ -364,8 +385,11 @@
             catOtherCid: catSettings.catOtherCid, catOtherName: catSettings.catOtherName,
         };
 
-        const res = await request('/settings', 'POST', { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix });
-        if(res.success) alert("设置已保存"); else alert(res.msg);
+        const res = await request('/settings', 'POST', { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix, enableCronFeature });
+        if(res.success) {
+            alert("设置已保存");
+            loadPublicSettings(); // 立即刷新UI状态
+        } else alert(res.msg);
     }
 
     // --- Cron 工具 ---
@@ -404,7 +428,9 @@
     // --- 任务操作 ---
 
     async function createTask() {
-        const enableCron = document.getElementById('enableCron').checked;
+        // 只有当区域可见时，才读取勾选状态
+        const isCronVisible = document.getElementById('createTaskCronSection').style.display !== 'none';
+        const enableCron = isCronVisible && document.getElementById('enableCron').checked;
         const cronExpression = enableCron ? updateCronPreview('create') : '';
         const categoryInput = document.querySelector('input[name="category"]:checked');
         if(!categoryInput) return alert("请选择保存分类");
