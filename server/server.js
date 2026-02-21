@@ -182,6 +182,7 @@ app.post('/api/task', async (req, res) => {
     const { taskName, shareUrl, password, category, cronExpression } = req.body;
     
     if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
+    if (!taskName || taskName.trim() === "") return res.status(400).json({ success: false, msg: "任务名称不能为空" });
     const cookie = globalSettings.cookie;
 
     try {
@@ -191,9 +192,6 @@ app.post('/api/task', async (req, res) => {
         const shareInfo = await service115.getShareInfo(cookie, urlInfo.code, pass);
 
         let finalTaskName = taskName;
-        if (!finalTaskName || finalTaskName.trim() === "") {
-            finalTaskName = shareInfo.shareTitle; 
-        }
         
         // 根据分类获取目标目录
         let finalTargetCid = "0";
@@ -447,8 +445,36 @@ async function processTask(task, isCron = false) {
             await service115.deleteFiles(cookie, task.lastSavedFileIds);
         }
 
+        // --- 2.6 智能文件夹处理 (新增) ---
+        let finalTargetCid = task.targetCid;
+        let createdFolderId = null;
+        
+        // 判断是否为单文件夹 (list长度为1 且 该项有cid)
+        const isSingleFolder = shareInfo.list.length === 1 && !!shareInfo.list[0].cid;
+        
+        if (!isSingleFolder) {
+            // 如果是散文件(或多个文件)，先创建一个文件夹
+            const folderName = task.taskName || shareInfo.shareTitle;
+            executionLog += `<br>[${formatTime()}] 检测到散文件，正在创建文件夹: ${folderName}`;
+            updateTaskStatus(task, 'running', executionLog);
+            
+            try {
+                const createRes = await service115.addFolder(cookie, task.targetCid, folderName);
+                if (createRes.success) {
+                    finalTargetCid = createRes.cid;
+                    createdFolderId = createRes.cid;
+                    executionLog += `<br>[${formatTime()}] 文件夹就绪 (CID: ${finalTargetCid})`;
+                    updateTaskStatus(task, 'running', executionLog);
+                } else {
+                    throw new Error(createRes.msg);
+                }
+            } catch (e) {
+                throw new Error("创建保存目录失败: " + e.message);
+            }
+        }
+
         // --- 3. 执行转存 ---
-        const saveResult = await service115.saveFiles(cookie, task.targetCid, task.shareCode, task.receiveCode, fileIds);
+        const saveResult = await service115.saveFiles(cookie, finalTargetCid, task.shareCode, task.receiveCode, fileIds);
 
        // --- 4. 成功后更新状态和日期 ---
         if (saveResult.success) {
@@ -460,22 +486,45 @@ async function processTask(task, isCron = false) {
             executionLog += `<br>[${formatTime()}] 成功保存到${task.targetName}路径`;
             updateTaskStatus(task, 'running', executionLog);
             
-            // 【新增】获取刚刚保存的文件ID，存入 task 以便下次删除
-            // 假设按时间排序，最新的 N 个文件即为本次转存的文件
-            const recent = await service115.getRecentItems(cookie, task.targetCid, saveResult.count);
-            if (recent.success) {
-                task.lastSavedFileIds = recent.items.map(i => i.id);
-                
-                // 【新增】自动重命名逻辑：如果是单个文件夹，且用户指定了任务名
-                if (recent.items.length === 1 && recent.items[0].isFolder && task.taskName) {
-                    const item = recent.items[0];
-                    if (item.name !== task.taskName) {
-                        console.log(`[Task] 自动重命名: ${item.name} -> ${task.taskName}`);
-                        await service115.renameFile(cookie, item.id, task.taskName);
-                        
-                        // 【步骤3】成功修改名称
-                        executionLog += `<br>[${formatTime()}] 成功修改文件夹名称: ${task.taskName}`;
-                        updateTaskStatus(task, 'running', executionLog);
+            if (createdFolderId) {
+                // 如果是我们创建的文件夹，那么本次任务对应的“产物”就是这个文件夹
+                task.lastSavedFileIds = [createdFolderId];
+            } else {
+                // 如果是单文件夹直接转存，逻辑不变 (获取最近转存的项)
+                const recent = await service115.getRecentItems(cookie, task.targetCid, saveResult.count);
+                if (recent.success) {
+                    task.lastSavedFileIds = recent.items.map(i => i.id);
+                    
+                    // 【新增】自动重命名逻辑：如果是单个文件夹，且用户指定了任务名
+                    if (recent.items.length === 1 && recent.items[0].isFolder && task.taskName) {
+                        const item = recent.items[0];
+                        if (item.name !== task.taskName) {
+                            console.log(`[Task] 自动重命名: ${item.name} -> ${task.taskName}`);
+                            
+                            // 【新增】检查是否存在同名文件/文件夹，若存在则删除旧的
+                            try {
+                                const listRes = await service115.getFolderList(cookie, task.targetCid, 1000);
+                                if (listRes.success && listRes.list) {
+                                    const existing = listRes.list.find(f => f.name === task.taskName);
+                                    if (existing) {
+                                        console.log(`[Task] 发现同名文件/文件夹 [${existing.name}] (ID: ${existing.id})，正在删除旧文件...`);
+                                        await service115.deleteFiles(cookie, [existing.id]);
+                                        executionLog += `<br>[${formatTime()}] 删除旧同名文件: ${task.taskName}`;
+                                        updateTaskStatus(task, 'running', executionLog);
+                                        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待删除生效
+                                    }
+                                }
+                            }
+                            } catch (e) {
+                                console.warn("[Task] 检查同名文件失败:", e);
+                            }
+
+                            await service115.renameFile(cookie, item.id, task.taskName);
+                            
+                            // 【步骤3】成功修改名称
+                            executionLog += `<br>[${formatTime()}] 成功修改文件夹名称: ${task.taskName}`;
+                            updateTaskStatus(task, 'running', executionLog);
+                        }
                     }
                 }
             }
@@ -497,13 +546,24 @@ async function processTask(task, isCron = false) {
         } else if (saveResult.status === 'exists') {
             // 【新增】处理“文件已存在”的情况：检查目标文件夹是否真的有文件
             // 有时候 115 会误报，或者文件确实在别的目录。我们需要确认目标目录里有没有东西。
-            const checkFiles = await service115.getRecentItems(cookie, task.targetCid, 5);
             
-            if (checkFiles.success && checkFiles.items.length > 0) {
-                // 目标文件夹里有文件，说明虽然提示重复，但文件确实在里面（可能是秒传成功）
+            let isSuccess = false;
+            if (createdFolderId) {
+                // 如果是我们创建的文件夹，且提示已存在，说明文件已在里面
+                isSuccess = true;
                 task.lastSuccessDate = todayStr;
-                task.lastSavedFileIds = checkFiles.items.map(i => i.id);
-                
+                task.lastSavedFileIds = [createdFolderId];
+            } else {
+                // 原有逻辑：检查目标目录是否有文件
+                const checkFiles = await service115.getRecentItems(cookie, task.targetCid, 5);
+                if (checkFiles.success && checkFiles.items.length > 0) {
+                    isSuccess = true;
+                    task.lastSuccessDate = todayStr;
+                    task.lastSavedFileIds = checkFiles.items.map(i => i.id);
+                }
+            }
+
+            if (isSuccess) {
                 executionLog += `<br>[${formatTime()}] 文件已存在(秒传)`;
                 updateTaskStatus(task, 'running', executionLog);
                 
@@ -630,7 +690,7 @@ function extractShareCode(url) {
 
 function formatTime() {
     const d = new Date();
-    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
 }
 
 initSystem();
