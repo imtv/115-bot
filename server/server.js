@@ -31,7 +31,13 @@ if (!fs.existsSync(DATA_ROOT)) {
 
 // --- 全局缓存 ---
 let globalSettings = { 
-    cookie: "", rootCid: "0", rootName: "根目录", 
+    cookie: "", 
+    // 5个分类的默认配置
+    catTvCid: "0", catTvName: "电视剧",
+    catMovieCid: "0", catMovieName: "电影",
+    catVarietyCid: "0", catVarietyName: "综艺",
+    catAnimeCid: "0", catAnimeName: "动漫",
+    catOtherCid: "0", catOtherName: "其他",
     adminUser: "admin", adminPass: "admin",
     olUrl: "", // OpenList 地址
     olToken: "", // OpenList Token
@@ -94,7 +100,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, rootCid, rootName, adminUser, adminPass, olUrl, olToken, olMountPrefix } = req.body;
+    const { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix } = req.body;
     
     if (cookie) {
         try {
@@ -106,8 +112,11 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
         }
     }
     
-    if (rootCid !== undefined) globalSettings.rootCid = rootCid;
-    if (rootName !== undefined) globalSettings.rootName = rootName;
+    // 更新分类配置
+    if (cats) {
+        Object.assign(globalSettings, cats);
+    }
+
     if (adminUser) globalSettings.adminUser = adminUser;
     if (adminPass) globalSettings.adminPass = adminPass;
     if (olUrl !== undefined) globalSettings.olUrl = olUrl;
@@ -170,7 +179,7 @@ app.get('/api/tasks', (req, res) => {
 
 // 6. 添加任务 (公开)
 app.post('/api/task', async (req, res) => {
-    const { taskName, shareUrl, password, targetCid, targetName, cronExpression } = req.body;
+    const { taskName, shareUrl, password, category, cronExpression } = req.body;
     
     if (!globalSettings.cookie) return res.status(400).json({ success: false, msg: "系统未配置 Cookie" });
     const cookie = globalSettings.cookie;
@@ -186,9 +195,23 @@ app.post('/api/task', async (req, res) => {
             finalTaskName = shareInfo.shareTitle; 
         }
         
-        // 默认使用管理员配置的根目录
-        let finalTargetCid = targetCid || globalSettings.rootCid || "0";
-        let finalTargetName = targetName || globalSettings.rootName || "根目录";
+        // 根据分类获取目标目录
+        let finalTargetCid = "0";
+        let finalTargetName = "根目录";
+        
+        // 映射分类到配置
+        const catMap = {
+            'tv': { cid: globalSettings.catTvCid, name: globalSettings.catTvName },
+            'movie': { cid: globalSettings.catMovieCid, name: globalSettings.catMovieName },
+            'variety': { cid: globalSettings.catVarietyCid, name: globalSettings.catVarietyName },
+            'anime': { cid: globalSettings.catAnimeCid, name: globalSettings.catAnimeName },
+            'other': { cid: globalSettings.catOtherCid, name: globalSettings.catOtherName }
+        };
+
+        if (category && catMap[category]) {
+            finalTargetCid = catMap[category].cid;
+            finalTargetName = catMap[category].name;
+        }
 
         const newTask = {
             id: Date.now(),
@@ -196,6 +219,7 @@ app.post('/api/task', async (req, res) => {
             shareUrl: shareUrl,
             shareCode: urlInfo.code,
             receiveCode: pass,
+            category: category || 'other',
             targetCid: finalTargetCid,
             targetName: finalTargetName,
             cronExpression: cronExpression,
@@ -227,7 +251,7 @@ app.post('/api/task', async (req, res) => {
 // 7. 编辑任务 (公开)
 app.put('/api/task/:id', async (req, res) => {
     const taskId = parseInt(req.params.id);
-    const { taskName, shareUrl, password, targetCid, targetName, cronExpression } = req.body;
+    const { taskName, shareUrl, password, cronExpression } = req.body;
     
     const task = globalTasks.find(t => t.id === taskId);
     if (!task) return res.status(404).json({ success: false, msg: "任务不存在" });
@@ -239,8 +263,6 @@ app.put('/api/task/:id', async (req, res) => {
     try {
         // 更新字段
         if (taskName) task.taskName = taskName;
-        if (targetCid) task.targetCid = targetCid;
-        if (targetName) task.targetName = targetName;
         
         // 如果更新了链接，重新解析 shareCode/receiveCode
         if (shareUrl && shareUrl !== task.shareUrl) {
@@ -441,7 +463,16 @@ async function processTask(task, isCron = false) {
             // 假设按时间排序，最新的 N 个文件即为本次转存的文件
             const recent = await service115.getRecentItems(cookie, task.targetCid, saveResult.count);
             if (recent.success) {
-                task.lastSavedFileIds = recent.items;
+                task.lastSavedFileIds = recent.items.map(i => i.id);
+                
+                // 【新增】自动重命名逻辑：如果是单个文件夹，且用户指定了任务名
+                if (recent.items.length === 1 && recent.items[0].isFolder && task.taskName) {
+                    const item = recent.items[0];
+                    if (item.name !== task.taskName) {
+                        console.log(`[Task] 自动重命名: ${item.name} -> ${task.taskName}`);
+                        await service115.renameFile(cookie, item.id, task.taskName);
+                    }
+                }
             }
 
             let countDesc = "";
@@ -476,7 +507,7 @@ async function processTask(task, isCron = false) {
             if (checkFiles.success && checkFiles.items.length > 0) {
                 // 目标文件夹里有文件，说明虽然提示重复，但文件确实在里面（可能是秒传成功）
                 task.lastSuccessDate = todayStr;
-                task.lastSavedFileIds = checkFiles.items;
+                task.lastSavedFileIds = checkFiles.items.map(i => i.id);
                 
                 let logMsg = `[${formatTime()}] 转存成功 (秒传/已存在)`;
                 // 【恢复】即使是秒传，也触发一次扫描
