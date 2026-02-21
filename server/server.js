@@ -195,6 +195,8 @@ app.post('/api/task', async (req, res) => {
 
     // 获取客户端 IP
     let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
+    // 如果经过了多级代理(如 Nginx + EasyTier)，x-forwarded-for 可能是 "IP1, IP2"，取第一个
+    if (clientIp && clientIp.includes(',')) clientIp = clientIp.split(',')[0].trim();
     if (clientIp && clientIp.includes('::ffff:')) clientIp = clientIp.replace('::ffff:', '');
 
     try {
