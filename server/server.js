@@ -33,6 +33,7 @@ if (!fs.existsSync(DATA_ROOT)) {
 let globalSettings = { 
     cookie: "", 
     enableCron: true, // 默认开启
+    lastBaiduScanTime: 0, // 【新增】持久化保存上次扫描时间
     // 5个分类的默认配置
     catTvCid: "0", catTvName: "电视剧",
     catMovieCid: "0", catMovieName: "电影",
@@ -45,7 +46,6 @@ let globalSettings = {
     olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
 };
 let globalTasks = [];
-let lastBaiduScanTime = 0; // 记录上次扫描百度网盘的时间
 let cronJobs = {};
 
 // 初始化：恢复之前的 Cron 任务
@@ -367,8 +367,8 @@ app.post('/api/scan/path', async (req, res) => {
     if (path === '/百度网盘') {
         const now = Date.now();
         const cooldown = 60 * 60 * 1000; // 1小时
-        if (now - lastBaiduScanTime < cooldown) {
-            const waitMin = Math.ceil((cooldown - (now - lastBaiduScanTime)) / 60000);
+        if (now - globalSettings.lastBaiduScanTime < cooldown) {
+            const waitMin = Math.ceil((cooldown - (now - globalSettings.lastBaiduScanTime)) / 60000);
             return res.json({ success: false, msg: `⏳ 全局冷却中：请等待 ${waitMin} 分钟后再执行扫描` });
         }
     }
@@ -376,7 +376,8 @@ app.post('/api/scan/path', async (req, res) => {
     try {
         const result = await executeOpenListScan(path);
         if (path === '/百度网盘') {
-            lastBaiduScanTime = Date.now(); // 只有请求成功才更新时间
+            globalSettings.lastBaiduScanTime = Date.now(); // 更新全局设置
+            saveSettings(); // 【关键】保存到 json 文件
         }
         res.json(result);
     } catch (e) {
