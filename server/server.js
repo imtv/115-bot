@@ -32,6 +32,7 @@ if (!fs.existsSync(DATA_ROOT)) {
 // --- 全局缓存 ---
 let globalSettings = { 
     cookie: "", 
+    enableCron: true, // 默认开启
     // 5个分类的默认配置
     catTvCid: "0", catTvName: "电视剧",
     catMovieCid: "0", catMovieName: "电影",
@@ -44,6 +45,7 @@ let globalSettings = {
     olMountPrefix: "" // OpenList侧挂载前缀 (如 /115网盘)
 };
 let globalTasks = [];
+let lastBaiduScanTime = 0; // 记录上次扫描百度网盘的时间
 let cronJobs = {};
 
 // 初始化：恢复之前的 Cron 任务
@@ -100,7 +102,7 @@ app.get('/api/settings', requireAdmin, (req, res) => {
 
 // 3. 保存设置 (需管理员)
 app.post('/api/settings', requireAdmin, async (req, res) => {
-    const { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix } = req.body;
+    const { cookie, cats, adminUser, adminPass, olUrl, olToken, olMountPrefix, enableCron } = req.body;
     
     if (cookie) {
         try {
@@ -122,6 +124,7 @@ app.post('/api/settings', requireAdmin, async (req, res) => {
     if (olUrl !== undefined) globalSettings.olUrl = olUrl;
     if (olToken !== undefined) globalSettings.olToken = olToken;
     if (olMountPrefix !== undefined) globalSettings.olMountPrefix = olMountPrefix;
+    if (enableCron !== undefined) globalSettings.enableCron = enableCron;
     
     saveSettings();
     res.json({ success: true, msg: "设置已保存", data: globalSettings });
@@ -360,8 +363,21 @@ app.post('/api/scan/path', async (req, res) => {
     const { path } = req.body;
     if (!path) return res.status(400).json({ success: false, msg: "路径不能为空" });
 
+    // 【新增】百度网盘扫描频率限制 (1小时)
+    if (path === '/百度网盘') {
+        const now = Date.now();
+        const cooldown = 60 * 60 * 1000; // 1小时
+        if (now - lastBaiduScanTime < cooldown) {
+            const waitMin = Math.ceil((cooldown - (now - lastBaiduScanTime)) / 60000);
+            return res.json({ success: false, msg: `⏳ 全局冷却中：请等待 ${waitMin} 分钟后再执行扫描` });
+        }
+    }
+
     try {
         const result = await executeOpenListScan(path);
+        if (path === '/百度网盘') {
+            lastBaiduScanTime = Date.now(); // 只有请求成功才更新时间
+        }
         res.json(result);
     } catch (e) {
         res.status(500).json({ success: false, msg: e.message });
