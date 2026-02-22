@@ -524,18 +524,25 @@ async function processTask(task, isCron = false) {
             executionLog += `<br>[${formatTime()}] 成功保存到${task.targetName}路径`;
             updateTaskStatus(task, 'running', executionLog);
             
+            // 【新增】延迟 3 秒，等待 115 文件系统索引更新，防止获取不到刚存的文件
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
             if (createdFolderId) {
                 // 如果是我们创建的文件夹，那么本次任务对应的“产物”就是这个文件夹
                 task.lastSavedFileIds = [createdFolderId];
             } else {
                 // 如果是单文件夹直接转存，逻辑不变 (获取最近转存的项)
-                const recent = await service115.getRecentItems(cookie, task.targetCid, saveResult.count);
-                if (recent.success) {
-                    task.lastSavedFileIds = recent.items.map(i => i.id);
+                // 【修改】即使只存了1个，也获取前10个，确保能拿到数据，然后取第一个
+                const recent = await service115.getRecentItems(cookie, task.targetCid, 10);
+                
+                if (recent.success && recent.items.length > 0) {
+                    // 只有当本次确实只转存了 1 个文件/文件夹时，才执行自动重命名逻辑
+                    // 否则无法确定要重命名哪一个
                     
-                    // 【新增】自动重命名逻辑：如果是单个文件夹，且用户指定了任务名
-                    if (recent.items.length === 1 && recent.items[0].isFolder && task.taskName) {
+                    if (saveResult.count === 1 && recent.items[0].isFolder && task.taskName) {
                         const item = recent.items[0];
+                        task.lastSavedFileIds = [item.id]; // 记录最新的这个ID
+
                         if (item.name !== task.taskName) {
                             console.log(`[Task] 自动重命名: ${item.name} -> ${task.taskName}`);
                             
@@ -549,7 +556,8 @@ async function processTask(task, isCron = false) {
                                         await service115.deleteFiles(cookie, [existing.id]);
                                         executionLog += `<br>[${formatTime()}] 删除旧同名文件: ${task.taskName}`;
                                         updateTaskStatus(task, 'running', executionLog);
-                                        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待删除生效
+                                        // 【修改】增加删除后的等待时间到 2 秒
+                                        await new Promise(resolve => setTimeout(resolve, 2000)); 
                                     }
                                 }
                             } catch (e) {
@@ -562,6 +570,9 @@ async function processTask(task, isCron = false) {
                             executionLog += `<br>[${formatTime()}] 成功修改文件夹名称: ${task.taskName}`;
                             updateTaskStatus(task, 'running', executionLog);
                         }
+                    } else {
+                        // 如果是多个文件，或者不是文件夹，则只记录ID，不重命名
+                        task.lastSavedFileIds = recent.items.slice(0, saveResult.count).map(i => i.id);
                     }
                 }
             }
