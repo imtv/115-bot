@@ -483,6 +483,27 @@ async function processTask(task, isCron = false) {
             await service115.deleteFiles(cookie, task.lastSavedFileIds);
         }
 
+        // --- 2.5.5 (新增) 预先清理同名文件夹 ---
+        // 在任务下发后，先检查目标路径下有没有同名文件夹，有的话先删除，确保环境干净
+        if (task.taskName) {
+            try {
+                const listRes = await service115.getFolderList(cookie, task.targetCid, 1000);
+                if (listRes.success && listRes.list) {
+                    const existing = listRes.list.find(f => f.name === task.taskName);
+                    if (existing) {
+                        console.log(`[Task] 预先发现同名项 [${existing.name}] (ID: ${existing.id})，正在删除...`);
+                        executionLog += `<br>[${formatTime()}] 发现同名文件夹，正在清理旧版本...`;
+                        updateTaskStatus(task, 'running', executionLog);
+                        
+                        await service115.deleteFiles(cookie, [existing.id]);
+                        await new Promise(resolve => setTimeout(resolve, 2000)); // 等待删除生效
+                    }
+                }
+            } catch (e) {
+                console.warn("[Task] 预先检查同名项失败:", e);
+            }
+        }
+
         // --- 2.6 智能文件夹处理 (新增) ---
         let finalTargetCid = task.targetCid;
         let createdFolderId = null;
@@ -546,24 +567,6 @@ async function processTask(task, isCron = false) {
                         if (item.name !== task.taskName) {
                             console.log(`[Task] 自动重命名: ${item.name} -> ${task.taskName}`);
                             
-                            // 【新增】检查是否存在同名文件/文件夹，若存在则删除旧的
-                            try {
-                                const listRes = await service115.getFolderList(cookie, task.targetCid, 1000);
-                                if (listRes.success && listRes.list) {
-                                    const existing = listRes.list.find(f => f.name === task.taskName);
-                                    if (existing) {
-                                        console.log(`[Task] 发现同名文件/文件夹 [${existing.name}] (ID: ${existing.id})，正在删除旧文件...`);
-                                        await service115.deleteFiles(cookie, [existing.id]);
-                                        executionLog += `<br>[${formatTime()}] 删除旧同名文件: ${task.taskName}`;
-                                        updateTaskStatus(task, 'running', executionLog);
-                                        // 【修改】增加删除后的等待时间到 2 秒
-                                        await new Promise(resolve => setTimeout(resolve, 2000)); 
-                                    }
-                                }
-                            } catch (e) {
-                                console.warn("[Task] 检查同名文件失败:", e);
-                            }
-
                             await service115.renameFile(cookie, item.id, task.taskName);
                             
                             // 【步骤3】成功修改名称
