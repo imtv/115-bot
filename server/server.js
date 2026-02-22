@@ -495,8 +495,12 @@ async function processTask(task, isCron = false) {
                         executionLog += `<br>[${formatTime()}] 发现同名文件夹，正在清理旧版本...`;
                         updateTaskStatus(task, 'running', executionLog);
                         
-                        await service115.deleteFiles(cookie, [existing.id]);
-                        await new Promise(resolve => setTimeout(resolve, 2000)); // 等待删除生效
+                        const delRes = await service115.deleteFiles(cookie, [existing.id]);
+                        if (delRes.success) {
+                            await new Promise(resolve => setTimeout(resolve, 2000)); // 等待删除生效
+                        } else {
+                            executionLog += `<br>[${formatTime()}] ⚠️ 旧版本清理失败: ${delRes.msg || '未知错误'}`;
+                        }
                     }
                 }
             } catch (e) {
@@ -545,7 +549,7 @@ async function processTask(task, isCron = false) {
             executionLog += `<br>[${formatTime()}] 成功保存到${task.targetName}路径`;
             updateTaskStatus(task, 'running', executionLog);
             
-            // 【新增】延迟 3 秒，等待 115 文件系统索引更新，防止获取不到刚存的文件
+            // 【关键延迟】等待 3 秒，确保 115 文件系统索引更新，防止获取不到刚存的文件
             await new Promise(resolve => setTimeout(resolve, 3000));
 
             if (createdFolderId) {
